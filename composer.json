@@ -1,0 +1,45 @@
+{
+    "name": "simbiat/db-query",
+    "type": "library",
+    "keywords": [
+        "database",
+        "php",
+        "pdo",
+        "query",
+        "robust"
+    ],
+    "description": "Robust database querying.",
+    "homepage": "https://github.com/Simbiat/db-query",
+    "license": "AGPL-3.0-or-later",
+    "authors": [
+        {
+            "name": "Dmitrii Kustov",
+            "email": "support@simbiat.dev",
+            "homepage": "https://www.simbiat.dev",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.4",
+        "ext-pdo": "*",
+        "simbiat/db-binder": "^1"
+    },
+    "replace": {
+        "simbiat/database": "*"
+    },
+    "conflict": {
+        "simbiat/database": "*"
+    },
+    "suggest": {
+        "simbiat/db-pool": "Allows use of database connections pool"
+    },
+    "autoload": {
+        "psr-4": {
+            "Simbiat\\Database\\": "src/"
+        }
+    },
+    "support": {
+        "issues": "https://github.com/Simbiat/db-query/issues",
+        "source": "https://github.com/Simbiat/db-query"
+    }
+}
