@@ -89,7 +89,7 @@ abstract class Query
             if (preg_match('/^\s*$/', $queries[$key][0]) === 1) {
                 throw new \UnexpectedValueException('Query #'.$key.' is an empty string.');
             }
-            #Merge bindings. Suppressing inspection, since we always have an array due to explicit conversion on previous step
+            #Merge bindings. Suppressing inspection, since we always have an array due to explicit conversion on a previous step
             /** @noinspection UnsupportedStringOffsetOperationsInspection */
             $queries[$key][1] = array_merge($queries[$key][1] ?? [], $bindings);
         }

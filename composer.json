@@ -27,9 +27,6 @@
     "replace": {
         "simbiat/database": "*"
     },
-    "conflict": {
-        "simbiat/database": "*"
-    },
     "suggest": {
         "simbiat/db-pool": "Allows use of database connections pool"
     },
