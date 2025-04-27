@@ -3,6 +3,7 @@ declare(strict_types = 1);
 
 namespace Simbiat\Database;
 
+use JetBrains\PhpStorm\ExpectedValues;
 use function count;
 use function in_array;
 use function is_string;
@@ -10,8 +11,46 @@ use function is_string;
 /**
  * Base class for various subclasses doing various database operations
  */
-abstract class Query
+class Query
 {
+    /**
+     * @var null|\PDO PDO object to run queries against
+     */
+    public static ?\PDO $dbh = null;
+    /**
+     * @var array List of functions that may return rows
+     */
+    public const array selects = [
+        'SELECT', 'SHOW', 'HANDLER', 'ANALYZE', 'CHECK', 'DESCRIBE', 'DESC', 'EXPLAIN', 'HELP'
+    ];
+    /**
+     * @var int Maximum time (in seconds) for the query (for `set_time_limit`)
+     */
+    public static int $maxRunTime = 3600;
+    /**
+     * @var int Number of times to retry in case of deadlock
+     */
+    public static int $maxTries = 5;
+    /**
+     * @var int Time (in seconds) to wait between retries in case of deadlock
+     */
+    public static int $sleep = 5;
+    /**
+     * @var int Number of queries ran. Static for convenience, in case the object gets destroyed, but you still want to get the total number
+     */
+    public static int $queries = 0;
+    /**
+     * @var array Timing statistics for each query
+     */
+    public static array $timings = [];
+    /**
+     * @var bool Debug mode
+     */
+    public static bool $debug = false;
+    /**
+     * @var bool Whether transaction mode is to be used for the current run
+     */
+    public static bool $transaction = true;
     /**
      * @var mixed Result of the last query
      */
@@ -24,46 +63,166 @@ abstract class Query
      * @var null|string|false ID of the last INSERT
      */
     public static null|string|false $lastId = null;
+    /**
+     * Internal variable to store \PDOStatement
+     * @var \PDOStatement|null
+     */
+    private static ?\PDOStatement $sql = null;
+    /**
+     * Stores current key that represents the current query ID
+     * @var string|int|null
+     */
+    private static string|int|null $currentKey = null;
+    /**
+     * Holds bindings for the current query
+     * @var array|null
+     */
+    private static ?array $currentBindings = null;
+    /**
+     * Flag indicating a deadlock
+     * @var bool
+     */
+    private static bool $deadlock = false;
+    /**
+     * Flag indicating that we have a single `SELECT` query
+     * @var bool
+     */
+    private static bool $singleSelect = false;
+    /**
+     * Supported return flavors
+     * @var array
+     */
+    private const array flavors = ['bool', 'increment', 'affected', 'all', 'column', 'row', 'value', 'pair', 'unique', 'count', 'check'];
     
     /**
-     * @param \PDO|null $dbh        PDO object to use for database connection. If not provided, the class expects the existence of `\Simbiat\Database\Pool` to use that instead.
-     * @param int|null  $maxRunTime Maximum time (in seconds) for the query (for `set_time_limit`)
-     * @param int|null  $maxTries   Number of times to retry in case of deadlock
-     * @param int|null  $sleep      Time (in seconds) to wait between retries in case of deadlock
-     * @param bool      $debug      Debug mode
+     * @param \PDO|null $dbh         PDO object to use for database connection. If not provided, the class expects the existence of `\Simbiat\Database\Pool` to use that instead.
+     * @param int|null  $maxRunTime  Maximum time (in seconds) for the query (for `set_time_limit`)
+     * @param int|null  $maxTries    Number of times to retry in case of deadlock
+     * @param int|null  $sleep       Time (in seconds) to wait between retries in case of deadlock
+     * @param bool      $transaction Flag whether to use `TRANSACTION` mode. `true` by default.
+     * @param bool      $debug       Debug mode
      */
-    public function __construct(?\PDO $dbh = null, ?int $maxRunTime = null, ?int $maxTries = null, ?int $sleep = null, bool $debug = false)
+    public function __construct(?\PDO $dbh = null, ?int $maxRunTime = null, ?int $maxTries = null, ?int $sleep = null, bool $transaction = true, bool $debug = false)
     {
-        Common::setDbh($dbh);
+        if ($dbh === null) {
+            if (method_exists(Pool::class, 'openConnection')) {
+                self::$dbh = Pool::openConnection();
+                if (self::$dbh === null) {
+                    throw new \RuntimeException('Pool class loaded but no connection was returned and no PDO object provided.');
+                }
+            } else {
+                throw new \RuntimeException('Pool class not loaded and no PDO object provided.');
+            }
+        } else {
+            self::$dbh = $dbh;
+        }
         #Update settings. All of them except for Debug Mode should change only if we explicitly pass new values. Debug mode should be reset on every call
         if ($maxRunTime !== null) {
-            Common::setMaxRunTime($maxRunTime);
+            if ($maxRunTime < 1) {
+                $maxRunTime = 1;
+            }
+            self::$maxRunTime = $maxRunTime;
         }
         if ($maxTries !== null) {
-            Common::setMaxTries($maxTries);
+            if ($maxTries < 1) {
+                $maxTries = 1;
+            }
+            self::$maxTries = $maxTries;
         }
         if ($sleep !== null) {
-            Common::setSleep($sleep);
+            if ($sleep < 1) {
+                $sleep = 1;
+            }
+            self::$sleep = $sleep;
         }
-        Common::setDebug($debug);
+        self::$transaction = $transaction;
+        self::$debug = $debug;
     }
     
     /**
      * Run SQL query
      *
-     * @param string|array $queries        - query/queries to run
-     * @param array        $bindings       - global bindings that need to be applied to all queries
-     * @param int          $fetch_style    - FETCH type used by SELECT queries. Applicable only if 1 query is sent
-     * @param mixed|null   $fetch_argument - fetch mode for PDO
-     * @param array        $ctor_args      - constructorArgs for fetchAll PDO function
-     * @param bool         $transaction    - flag whether to use TRANSACTION mode. TRUE by default to allow more consistency
+     * @param string|array                    $queries         Query/queries to run.
+     * @param array                           $bindings        Global bindings that need to be applied to all queries.
+     * @param int                             $fetch_mode      `FETCH` mode used by `SELECT` queries.
+     * @param int|string|object|null|callable $fetch_argument  Optional argument for various `FETCH` modes.
+     * @param array                           $constructorArgs `ConstructorArgs` for `fetchAll` PDO function. Used only for `\PDO::FETCH_CLASS` mode.
+     * @param string                          $return          Hint to change the type of return on success. The default is `bool`, refer documentation for other values.
      *
-     * @return bool
+     * @return mixed
      */
-    public static function query(string|array $queries, array $bindings = [], int $fetch_style = \PDO::FETCH_ASSOC, int|string|object|null $fetch_argument = NULL, array $ctor_args = [], bool $transaction = true): bool
+    public static function query(string|array $queries, array $bindings = [], int $fetch_mode = \PDO::FETCH_ASSOC, int|string|object|null|callable $fetch_argument = null, array $constructorArgs = [], #[ExpectedValues(self::flavors)] string $return = 'bool'): mixed
     {
-        #Reset lastID
-        self::$lastId = null;
+        if (!in_array($return, self::flavors, true)) {
+            throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but it is not supported.');
+        }
+        if (in_array($return, ['column', 'value', 'count'], true)) {
+            if (\is_int($fetch_argument) || $fetch_argument === null) {
+                $fetch_mode = \PDO::FETCH_COLUMN;
+            } else {
+                throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but `$fetch_argument` is not an integer.');
+            }
+        }
+        if ($return === 'pair') {
+            $fetch_mode = \PDO::FETCH_KEY_PAIR;
+        }
+        if ($return === 'unique') {
+            $fetch_mode = \PDO::FETCH_UNIQUE;
+        }
+        self::preprocess($queries, $bindings, $return);
+        #Set counter for tries
+        $try = 0;
+        do {
+            $try++;
+            try {
+                self::execute($queries, $fetch_mode, $fetch_argument, $constructorArgs);
+            } catch (\Throwable $exception) {
+                $errMessage = $exception->getMessage().$exception->getTraceAsString();
+                self::except($queries, $errMessage, $exception);
+                #If deadlock - sleep and then retry
+                if (self::$deadlock) {
+                    sleep(self::$sleep);
+                    continue;
+                }
+                throw new \RuntimeException($errMessage, 0, $exception);
+            }
+            if ($return === 'increment') {
+                return self::$lastId;
+            }
+            if ($return === 'affected') {
+                return self::$lastAffected;
+            }
+            if (in_array($return, ['all', 'column', 'pair', 'unique'])) {
+                return self::$lastResult;
+            }
+            if ($return === 'row') {
+                return self::$lastResult[0] ?? [];
+            }
+            if ($return === 'value') {
+                return (self::$lastResult[0] ?? null);
+            }
+            if ($return === 'count') {
+                return (int)(self::$lastResult[0] ?? null);
+            }
+            if ($return === 'check') {
+                return !empty(self::$lastResult);
+            }
+            return true;
+        } while ($try <= self::$maxTries);
+        throw new \RuntimeException('Deadlock encountered for set maximum of '.self::$maxTries.' tries.');
+    }
+    
+    /**
+     * Helper to do some preparations of the queries and bindings
+     *
+     * @param string|array $queries
+     * @param array        $bindings
+     * @param string       $return
+     *
+     * @return void
+     */
+    private static function preprocess(string|array &$queries, array $bindings, string $return): void
+    {
         #Check if a query string was sent
         if (is_string($queries)) {
             if (preg_match('/^\s*$/', $queries) === 1) {
@@ -77,17 +236,11 @@ abstract class Query
         #Iterrate over array to merge binding
         foreach ($queries as $key => $query) {
             #Ensure integer keys
-            if (is_string($query)) {
-                $query = [0 => $query, 1 => []];
-            }
-            $queries[$key] = array_values($query);
+            $queries[$key] = array_values(\is_array($query) ? $query : [0 => $query, 1 => []]);
             #Check if the query is a string
-            if (!is_string($queries[$key][0])) {
+            if (!is_string($queries[$key][0]) || preg_match('/^\s*$/', $queries[$key][0]) === 1) {
                 #Exit earlier for speed
-                throw new \UnexpectedValueException('Query #'.$key.' is not a string.');
-            }
-            if (preg_match('/^\s*$/', $queries[$key][0]) === 1) {
-                throw new \UnexpectedValueException('Query #'.$key.' is an empty string.');
+                throw new \UnexpectedValueException('Query #'.$key.' is not a valid string.');
             }
             #Merge bindings. Suppressing inspection, since we always have an array due to explicit conversion on a previous step
             /** @noinspection UnsupportedStringOffsetOperationsInspection */
@@ -96,13 +249,8 @@ abstract class Query
         #Remove any SELECT queries and comments if more than 1 query is sent
         if (count($queries) > 1) {
             foreach ($queries as $key => $query) {
-                #Check if the query is SELECT
-                if (self::isSelect($query[0], false)) {
-                    unset($queries[$key]);
-                    continue;
-                }
-                #Check if the query is a comment
-                if (preg_match('/^\s*(--|#|\/\*).*$/', $query[0]) === 1) {
+                #Check if the query is `SELECT` or a comment
+                if (self::isSelect($query[0], false) || preg_match('/^\s*(--|#|\/\*).*$/', $query[0]) === 1) {
                     unset($queries[$key]);
                 }
             }
@@ -111,156 +259,195 @@ abstract class Query
         if (empty($queries)) {
             throw new \UnexpectedValueException('No queries were provided to `query()` function or all of them were identified as SELECT-like statements.');
         }
-        #Flag for SELECT, used as a sort of "cache" instead of counting values every time
-        $select = false;
-        #If we have just 1 query, which is a `SELECT` - disable transaction
-        if ((count($queries) === 1) && self::isSelect($queries[0][0], false)) {
-            $select = true;
-            $transaction = false;
-        }
+        self::flavorCheck($queries, $return);
+        #Reset lastID
+        self::$lastId = null;
         #Reset the number of affected rows and reset it before run
         self::$lastAffected = 0;
-        #Set counter for tries
-        $try = 0;
-        do {
-            #Suppressing because we want to standardize error handling for this part
-            /** @noinspection BadExceptionsProcessingInspection */
-            try {
-                #Indicate actual try
-                $try++;
-                #Initiate transaction if we are using it
-                if ($transaction) {
-                    Common::$dbh->beginTransaction();
+    }
+    
+    /**
+     * Helper to validate return flavor is supported by the current query or list of queries
+     * @param array  $queries
+     * @param string $return
+     *
+     * @return void
+     */
+    private static function flavorCheck(array &$queries, string $return): void
+    {
+        #Flag for SELECT, used as a sort of "cache" instead of counting values every time
+        self::$singleSelect = false;
+        #If we have just 1 query, which is a `SELECT` - disable transaction
+        if ((count($queries) === 1)) {
+            if (self::isSelect($queries[0][0], false)) {
+                self::$singleSelect = true;
+                self::$transaction = false;
+                #Add `LIMIT 1` to the query if it's not already there to help reduce the use of resources.
+                if ($return === 'row' && preg_match('/\s*LIMIT\s+(\d+\s*,\s*)?\d+\s*;?\s*$/ui', $queries[0][0]) !== 1) {
+                    #EA thinks the variable can be a string, but it will never be one at this point.
+                    /** @noinspection UnsupportedStringOffsetOperationsInspection */
+                    $queries[0][0] = preg_replace(['/(;?\s*\z)/mui', '/\z/mui'], ['', ' LIMIT 0, 1;'], $queries[0][0]);
                 }
-                #Loop through queries
-                foreach ($queries as $key => $query) {
-                    #Reset variables
-                    $sql = null;
-                    $currentBindings = null;
-                    $currentKey = $key;
-                    #Prepare bindings if any
-                    if (!empty($query[1])) {
-                        $currentBindings = $query[1];
-                        Bind::unpackIN($query[0], $currentBindings);
-                    }
-                    #Prepare the query
-                    if (Common::$dbh->getAttribute(\PDO::ATTR_DRIVER_NAME) === 'mysql') {
-                        #Force the buffered query for MySQL
-                        $sql = Common::$dbh->prepare($query[0], [\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true]);
-                    } else {
-                        $sql = Common::$dbh->prepare($query[0]);
-                    }
-                    #Bind values, if any
-                    if (!empty($query[1])) {
-                        Bind::bindMultiple($sql, $currentBindings);
-                    }
-                    #Increasing time limit for potentially long operations (like optimize)
-                    set_time_limit(Common::$maxRunTime);
-                    #Increase the number of queries
-                    Common::$queries++;
-                    #Execute the query
-                    $start = hrtime(true);
-                    $sql->execute();
-                    Common::addTiming($query[0], hrtime(true) - $start);
-                    #If debug is enabled dump PDO details
-                    if (Common::$debug) {
-                        $sql->debugDumpParams();
-                        ob_flush();
-                        flush();
-                    }
-                    if ($select) {
-                        #Adjust fetching mode
-                        if ($fetch_argument === 'row') {
-                            self::$lastResult = $sql->fetchAll($fetch_style);
-                            if (isset(self::$lastResult[0])) {
-                                self::$lastResult = self::$lastResult[0];
-                            }
-                        } elseif (in_array($fetch_style, [\PDO::FETCH_COLUMN, \PDO::FETCH_FUNC, \PDO::FETCH_INTO], true)) {
-                            self::$lastResult = $sql->fetchAll($fetch_style, $fetch_argument);
-                        } elseif ($fetch_style === \PDO::FETCH_CLASS) {
-                            self::$lastResult = $sql->fetchAll($fetch_style, $fetch_argument, $ctor_args);
-                        } else {
-                            self::$lastResult = $sql->fetchAll($fetch_style);
-                        }
-                    } else {
-                        #Increase the counter of affected rows (inserted, deleted, updated)
-                        self::$lastAffected += $sql->rowCount();
-                    }
-                    #Explicitely close pointer to release resources
-                    $sql->closeCursor();
-                    #Remove the query from the bulk, if not using transaction mode, to avoid repeating of commands
-                    #Not sure why PHP Storm complains about this line
-                    /** @noinspection PhpConditionAlreadyCheckedInspection */
-                    if (!$transaction) {
-                        unset($queries[$key]);
-                    }
+            } else {
+                if (!in_array($return, ['increment', 'bool', 'affected'])) {
+                    throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but the query is not a `SELECT`.');
                 }
-                #Try to get the last ID (if we had any inserts with auto increment
-                try {
-                    self::$lastId = Common::$dbh->lastInsertId();
-                } catch (\Throwable) {
-                    #Either the function is not supported by the driver or it requires a sequence name.
-                    #Since this class is meant to be universal, I do not see a good way to support sequence name at the time of writing.
-                    self::$lastId = false;
+                if ($return === 'increment' && !self::isInsert($queries[0][0], false)) {
+                    throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but the query is not an `INSERT`.');
                 }
-                #Initiate a transaction if we are using it
-                if ($transaction && Common::$dbh->inTransaction()) {
-                    Common::$dbh->commit();
-                }
-                return true;
-            } catch (\Throwable $e) {
-                $errMessage = $e->getMessage().$e->getTraceAsString();
-                #We can get here without `$sql` being set when transaction initialization fails
-                /** @noinspection PhpConditionAlreadyCheckedInspection */
-                if (isset($sql) && Common::$debug) {
-                    $sql->debugDumpParams();
-                    echo $errMessage;
-                    ob_flush();
-                    flush();
-                }
-                #Check if it's a deadlock. Unbuffered queries are not deadlock, but practice showed that in some cases this error is thrown when there is a lock on resources, and not really an issue with (un)buffered queries. Retrying may help in those cases.
-                #We can get here without `$sql` being set when transaction initiation fails
-                /** @noinspection PhpConditionAlreadyCheckedInspection */
-                if (isset($sql) && ($sql->errorCode() === '40001' || preg_match('/(deadlock|try restarting transaction|Cannot execute queries while other unbuffered queries are active)/mi', $errMessage) === 1)) {
-                    $deadlock = true;
-                } else {
-                    $deadlock = false;
-                    #Set error message
-                    if (isset($currentKey)) {
-                        try {
-                            $errMessage = 'Failed to run query `'.$queries[$currentKey][0].'`'.(!empty($currentBindings) ? ' with following bindings: '.json_encode($currentBindings, JSON_THROW_ON_ERROR) : '');
-                        } catch (\JsonException) {
-                            $errMessage = 'Failed to run query `'.$queries[$currentKey][0].'`'.(!empty($currentBindings) ? ' with following bindings: `Failed to JSON Encode bindings`' : '');
-                        }
-                    } else {
-                        $errMessage = 'Failed to start or end transaction';
-                    }
-                }
-                #We can get here without `$sql` being set when transaction initialization fails
-                /** @noinspection PhpConditionAlreadyCheckedInspection */
-                if (isset($sql)) {
-                    #Ensure the pointer is closed
-                    try {
-                        $sql->closeCursor();
-                    } catch (\Throwable) {
-                        #Do nothing, most likely fails due to non-existent cursor.
-                    }
-                }
-                if (Common::$dbh->inTransaction()) {
-                    Common::$dbh->rollBack();
-                    if (!$deadlock) {
-                        throw new \RuntimeException($errMessage, 0, $e);
-                    }
-                }
-                #If deadlock - sleep and then retry
-                if ($deadlock) {
-                    sleep(Common::$sleep);
-                    continue;
-                }
-                throw new \RuntimeException($errMessage, 0, $e);
             }
-        } while ($try <= Common::$maxTries);
-        throw new \RuntimeException('Deadlock encountered for set maximum of '.Common::$maxTries.' tries.');
+        } elseif ($return !== 'bool' && $return !== 'affected') {
+            throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but there are multiple queries provided.');
+        }
+    }
+    
+    /**
+     * Helper to handle exceptions
+     * @param array      $queries
+     * @param string     $errMessage
+     * @param \Throwable $exception
+     *
+     * @return void
+     */
+    private static function except(array $queries, string $errMessage, \Throwable $exception): void
+    {
+        if (isset(self::$sql) && self::$debug) {
+            self::$sql->debugDumpParams();
+            echo $errMessage;
+            ob_flush();
+            flush();
+        }
+        #Check if it's a deadlock. Unbuffered queries are not deadlock, but practice showed that in some cases this error is thrown when there is a lock on resources, and not really an issue with (un)buffered queries. Retrying may help in those cases.
+        if (isset(self::$sql) && (self::$sql->errorCode() === '40001' || preg_match('/(deadlock|try restarting transaction|Cannot execute queries while other unbuffered queries are active)/mi', $errMessage) === 1)) {
+            self::$deadlock = true;
+        } else {
+            self::$deadlock = false;
+            #Set error message
+            if (isset(self::$currentKey)) {
+                try {
+                    $errMessage = 'Failed to run query `'.$queries[self::$currentKey][0].'`'.(!empty(self::$currentBindings) ? ' with following bindings: '.json_encode(self::$currentBindings, JSON_THROW_ON_ERROR) : '');
+                } catch (\JsonException) {
+                    $errMessage = 'Failed to run query `'.$queries[self::$currentKey][0].'`'.(!empty(self::$currentBindings) ? ' with following bindings: `Failed to JSON Encode bindings`' : '');
+                }
+            } else {
+                $errMessage = 'Failed to start or end transaction';
+            }
+        }
+        if (isset(self::$sql)) {
+            #Ensure the pointer is closed
+            try {
+                self::$sql->closeCursor();
+            } catch (\Throwable) {
+                #Do nothing, most likely fails due to non-existent cursor.
+            }
+        }
+        if (self::$dbh->inTransaction()) {
+            self::$dbh->rollBack();
+            if (!self::$deadlock) {
+                throw new \RuntimeException($errMessage, 0, $exception);
+            }
+        }
+    }
+    
+    /**
+     * Helper that actually executed the queries
+     *
+     * @param array                           $queries
+     * @param int                             $fetch_mode
+     * @param int|string|object|null|callable $fetch_argument
+     * @param array                           $constructorArgs
+     *
+     * @return void
+     *
+     */
+    private static function execute(array &$queries, int $fetch_mode = \PDO::FETCH_ASSOC, int|string|object|null|callable $fetch_argument = NULL, array $constructorArgs = []): void
+    {
+        #Initiate transaction if we are using it
+        if (self::$transaction) {
+            self::$dbh->beginTransaction();
+        }
+        #Loop through queries
+        foreach ($queries as $key => $query) {
+            #Reset variables
+            self::$sql = null;
+            self::$currentBindings = null;
+            self::$currentKey = $key;
+            #Prepare bindings if any
+            if (!empty($query[1])) {
+                self::$currentBindings = $query[1];
+                Bind::unpackIN($query[0], self::$currentBindings);
+            }
+            #Prepare the query
+            if (self::$dbh->getAttribute(\PDO::ATTR_DRIVER_NAME) === 'mysql') {
+                #Force the buffered query for MySQL
+                self::$sql = self::$dbh->prepare($query[0], [\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true]);
+            } else {
+                self::$sql = self::$dbh->prepare($query[0]);
+            }
+            #Bind values, if any
+            if (!empty($query[1])) {
+                Bind::bindMultiple(self::$sql, self::$currentBindings);
+            }
+            #Increasing time limit for potentially long operations (like `OPTIMIZE`)
+            set_time_limit(self::$maxRunTime);
+            #Increase the number of queries
+            self::$queries++;
+            #Execute the query
+            $start = hrtime(true);
+            self::$sql->execute();
+            #Register statistics
+            $time = hrtime(true) - $start;
+            #Check if this query has been registered already
+            $queryToRegister = array_search($query[0], array_column(self::$timings, 'query'), true);
+            if ($queryToRegister === false) {
+                #Not registered yet, so add it
+                self::$timings[] = [
+                    'query' => $query[0],
+                    'time' => [$time],
+                ];
+            } else {
+                #Registered, so add to the list of times
+                self::$timings[$queryToRegister]['time'][] = $time;
+            }
+            #If debug is enabled dump PDO details
+            if (self::$debug) {
+                self::$sql->debugDumpParams();
+                ob_flush();
+                flush();
+            }
+            /** @noinspection DisconnectedForeachInstructionInspection */
+            if (self::$singleSelect) {
+                #Adjust fetching mode
+                if (in_array($fetch_mode, [\PDO::FETCH_COLUMN, \PDO::FETCH_FUNC, \PDO::FETCH_INTO, \PDO::FETCH_FUNC, \PDO::FETCH_SERIALIZE], true)) {
+                    self::$lastResult = self::$sql->fetchAll($fetch_mode, $fetch_argument);
+                } elseif (in_array($fetch_mode, [\PDO::FETCH_CLASS, \PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE], true)) {
+                    self::$lastResult = self::$sql->fetchAll($fetch_mode, $fetch_argument, $constructorArgs);
+                } else {
+                    self::$lastResult = self::$sql->fetchAll($fetch_mode);
+                }
+            } else {
+                #Increase the counter of affected rows (inserted, deleted, updated)
+                self::$lastAffected += self::$sql->rowCount();
+            }
+            #Explicitely close pointer to release resources
+            self::$sql->closeCursor();
+            #Remove the query from the bulk, if not using transaction mode, to avoid repeating of commands
+            if (!self::$transaction) {
+                unset($queries[$key]);
+            }
+        }
+        #Try to get the last ID (if we had any inserts with auto increment
+        try {
+            self::$lastId = self::$dbh->lastInsertId();
+        } catch (\Throwable) {
+            #Either the function is not supported by the driver or it requires a sequence name.
+            #Since this class is meant to be universal, I do not see a good way to support sequence name at the time of writing.
+            self::$lastId = false;
+        }
+        #Initiate a transaction if we are using it
+        if (self::$transaction && self::$dbh->inTransaction()) {
+            self::$dbh->commit();
+        }
     }
     
     /**
@@ -274,11 +461,11 @@ abstract class Query
     {
         #First, check that the whole text does not start with any of SELECT-like statements or with `WITH` (CTE)
         if (preg_match('/\A\s*WITH/mui', $query) !== 1
-            && preg_match('/\A\s*('.implode('|', Common::selects).')/mui', $query) !== 1
-            && preg_match('/^\s*(\(\s*)*('.implode('|', Common::selects).')/mui', $query) !== 1
+            && preg_match('/\A\s*('.implode('|', self::selects).')/mui', $query) !== 1
+            && preg_match('/^\s*(\(\s*)*('.implode('|', self::selects).')/mui', $query) !== 1
         ) {
             if ($throw) {
-                throw new \UnexpectedValueException('Query is not one of '.implode(', ', Common::selects).'.');
+                throw new \UnexpectedValueException('Query is not one of '.implode(', ', self::selects).'.');
             }
             return false;
         }
@@ -286,7 +473,24 @@ abstract class Query
     }
     
     /**
-     * Helper function to allow splitting a string into an array of queries. Made public because it may be useful outside this class' functions.
+     * @param string $query
+     * @param bool   $throw
+     *
+     * @return bool
+     */
+    public static function isInsert(string $query, bool $throw = true): bool
+    {
+        if (preg_match('/^\s*INSERT\s+INTO/ui', $query) === 1) {
+            return true;
+        }
+        if ($throw) {
+            throw new \UnexpectedValueException('Query is not INSERT.');
+        }
+        return false;
+    }
+    
+    /**
+     * Helper function to allow splitting a string into an array of queries.
      * Regexp was taken from https://stackoverflow.com/questions/24423260/split-sql-statements-in-php-on-semicolons-but-not-inside-quotes
      *
      * @param string $string
