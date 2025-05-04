@@ -234,9 +234,14 @@ class Query
         #Ensure integer keys
         $queries = array_values($queries);
         #Iterrate over array to merge binding
-        foreach ($queries as $key => $query) {
+        foreach ($queries as $key => $arrayToProcess) {
             #Ensure integer keys
-            $queries[$key] = array_values(\is_array($query) ? $query : [0 => $query, 1 => []]);
+            if (\is_array($arrayToProcess)) {
+                $queries[$key] = [0 => $arrayToProcess['query'] ?? $arrayToProcess[0] ?? null, 1 => $arrayToProcess['bindings'] ?? $arrayToProcess[1] ?? []];
+            } else {
+                $queries[$key] = [0 => $arrayToProcess, 1 => []];
+            }
+            $queries[$key] = array_values(\is_array($arrayToProcess) ? $arrayToProcess : [0 => $arrayToProcess, 1 => []]);
             #Check if the query is a string
             if (!is_string($queries[$key][0]) || preg_match('/^\s*$/', $queries[$key][0]) === 1) {
                 #Exit earlier for speed
@@ -253,9 +258,9 @@ class Query
         }
         #Remove any SELECT queries and comments if more than 1 query is sent
         if (count($queries) > 1) {
-            foreach ($queries as $key => $query) {
+            foreach ($queries as $key => $arrayToProcess) {
                 #Check if the query is `SELECT` or a comment
-                if (self::isSelect($query[0], false) || preg_match('/^\s*(--|#|\/\*).*$/', $query[0]) === 1) {
+                if (self::isSelect($arrayToProcess[0], false) || preg_match('/^\s*(--|#|\/\*).*$/', $arrayToProcess[0]) === 1) {
                     unset($queries[$key]);
                 }
             }
