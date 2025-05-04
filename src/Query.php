@@ -243,8 +243,13 @@ class Query
                 throw new \UnexpectedValueException('Query #'.$key.' is not a valid string.');
             }
             #Merge bindings. Suppressing inspection, since we always have an array due to explicit conversion on a previous step
-            /** @noinspection UnsupportedStringOffsetOperationsInspection */
-            $queries[$key][1] = array_merge($queries[$key][1] ?? [], $bindings);
+            if (empty($queries[$key][1])) {
+                /** @noinspection UnsupportedStringOffsetOperationsInspection */
+                $queries[$key][1] = $bindings;
+            } else {
+                /** @noinspection UnsupportedStringOffsetOperationsInspection */
+                $queries[$key][1] += $bindings;
+            }
         }
         #Remove any SELECT queries and comments if more than 1 query is sent
         if (count($queries) > 1) {
