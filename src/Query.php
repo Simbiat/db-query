@@ -21,7 +21,7 @@ class Query
      * @var array List of functions that may return rows
      */
     public const array selects = [
-        'SELECT', 'SHOW', 'HANDLER', 'ANALYZE', 'CHECK', 'DESCRIBE', 'DESC', 'EXPLAIN', 'HELP'
+        'SELECT', 'SHOW', 'HANDLER', 'ANALYZE', 'CHECK', 'DESCRIBE', 'DESC', 'EXPLAIN', 'HELP', 'REPAIR', 'OPTIMIZE'
     ];
     /**
      * @var int Maximum time (in seconds) for the query (for `set_time_limit`)
