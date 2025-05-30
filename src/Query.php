@@ -307,6 +307,7 @@ class Query
                 }
             }
         } elseif ($return !== 'bool' && $return !== 'affected') {
+            \Simbiat\Website\Tests::testDump($queries);
             throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but there are multiple queries provided.');
         }
     }
@@ -500,8 +501,8 @@ class Query
     }
     
     /**
-     * Helper function to allow splitting a string into an array of queries.
-     * Regexp was taken from https://stackoverflow.com/questions/24423260/split-sql-statements-in-php-on-semicolons-but-not-inside-quotes
+     * Helper function to allow splitting a string into an array of queries. May not work as expected with compelx queries or certain string literals.
+     * Regexp was taken from https://stackoverflow.com/questions/24423260/split-sql-statements-in-php-on-semicolons-but-not-inside-quotes and adjusted to handle `;` inside quotes.
      *
      * @param string $string
      *
@@ -509,7 +510,7 @@ class Query
      */
     public static function stringToQueries(string $string): array
     {
-        $queries = preg_split('~\([^)]*\)(*SKIP)(*FAIL)|(?<=;)(?! *$)~', $string);
+        $queries = preg_split('/((["\'])(?:\.|(?!\2).)*+\2|\([^()]*\))(*SKIP)(*FAIL)|(?<=;)(?! *$)/u', $string);
         $filtered = [];
         foreach ($queries as $query) {
             #Trim first

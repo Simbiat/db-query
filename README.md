@@ -46,7 +46,7 @@ new \Simbiat\Database\Query($dbh)::query(string|array $queries, array $bindings 
 \Simbiat\Database\Query::query(string|array $queries, array $bindings = [], int $fetch_mode = \PDO::FETCH_ASSOC, int|string|object|null|callable $fetch_argument = null, array $constructorArgs = [], #[ExpectedValues(self::flavors)] string $return = 'bool');
 ```
 
-- `$queries` - Query or queries to run. Either a string or an array. String will be split, so you can send multiple queries in one go, but for such a use case an array is advisable. The array can be sent either as `[0 => 'query1', 1 => 'query2']` or `[0 => [0 => 'query1', 1 => $bindings1], 1 => [0 => 'query2', 1 => $bindings2]]` where `$binding1` and `$binding2` are optional per query bindings as per [DB-Binder's](https://github.com/Simbiat/db-binder) logic. Note that in the case of per-query bindings, the query needs to always be the first element, and the bindings array — the second one. Alternatively, use an associative array with `query` and `bindings` keys respectively.
+- `$queries` - Query or queries to run. Either a string or an array. String will be split, so you can send multiple queries in one go, but for such a use case an array is advisable, since complex queries or queries with certain literals can be split incorrectly. The array can be sent either as `[0 => 'query1', 1 => 'query2']` or `[0 => [0 => 'query1', 1 => $bindings1], 1 => [0 => 'query2', 1 => $bindings2]]` where `$binding1` and `$binding2` are optional per query bindings as per [DB-Binder's](https://github.com/Simbiat/db-binder) logic. Note that in the case of per-query bindings, the query needs to always be the first element, and the bindings array — the second one. Alternatively, use an associative array with `query` and `bindings` keys respectively.
 - `$bindings` - Global bindings that need to be applied to all queries as per [DB-Binder's](https://github.com/Simbiat/db-binder) logic. Note, that for merging of the arrays `+` operator is used instead of `array_merge`, and global bindings are added to "local" ones, which means that in case of duplicate keys the "local" ones will take precedence.
 - `$fetch_mode` - `FETCH` mode used by `SELECT` queries. Needs to be respective `\PDO::FETCH_*` variable.
 - `$fetch_argument` - Optional argument for various `FETCH` modes, like column number for `\PDO::FETCH_COLUMN`, callable for `\PDO::FETCH_FUNC`.
@@ -98,7 +98,7 @@ Checks if a provided query is an `INSERT`. Can throw an exception, if `$throw` i
 \Simbiat\Database\Query::stringToQueries(string $string);
 ```
 
-Splits a string into an array of queries. Uses regexp from [StackOverflow](https://stackoverflow.com/questions/24423260/split-sql-statements-in-php-on-semicolons-but-not-inside-quotes).
+Splits a string into an array of queries. Uses regexp from [StackOverflow](https://stackoverflow.com/questions/24423260/split-sql-statements-in-php-on-semicolons-but-not-inside-quotes). Not recommended for complex queries.
 
 ### Statistics
 
