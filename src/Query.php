@@ -20,7 +20,7 @@ class Query
     /**
      * @var array List of functions that may return rows
      */
-    public const array selects = [
+    public const array SELECTS = [
         'SELECT', 'SHOW', 'HANDLER', 'ANALYZE', 'CHECK', 'DESCRIBE', 'DESC', 'EXPLAIN', 'HELP', 'REPAIR', 'OPTIMIZE'
     ];
     /**
@@ -92,7 +92,7 @@ class Query
      * Supported return flavors
      * @var array
      */
-    private const array flavors = ['bool', 'increment', 'affected', 'all', 'column', 'row', 'value', 'pair', 'unique', 'count', 'check'];
+    private const array FLAVORS = ['bool', 'increment', 'affected', 'all', 'column', 'row', 'value', 'pair', 'unique', 'count', 'check'];
     
     /**
      * @param \PDO|null $dbh         PDO object to use for database connection. If not provided, the class expects the existence of `\Simbiat\Database\Pool` to use that instead.
@@ -151,9 +151,9 @@ class Query
      *
      * @return mixed
      */
-    public static function query(string|array $queries, array $bindings = [], int $fetch_mode = \PDO::FETCH_ASSOC, int|string|object|null|callable $fetch_argument = null, array $constructorArgs = [], #[ExpectedValues(self::flavors)] string $return = 'bool'): mixed
+    public static function query(string|array $queries, array $bindings = [], int $fetch_mode = \PDO::FETCH_ASSOC, int|string|object|null|callable $fetch_argument = null, array $constructorArgs = [], #[ExpectedValues(self::FLAVORS)] string $return = 'bool'): mixed
     {
-        if (!in_array($return, self::flavors, true)) {
+        if (!in_array($return, self::FLAVORS, true)) {
             throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but it is not supported.');
         }
         if (in_array($return, ['column', 'value', 'count'], true)) {
@@ -472,11 +472,11 @@ class Query
     {
         #First, check that the whole text does not start with any of SELECT-like statements or with `WITH` (CTE)
         if (preg_match('/\A\s*WITH/mui', $query) !== 1
-            && preg_match('/\A\s*('.implode('|', self::selects).')/mui', $query) !== 1
-            && preg_match('/^\s*(\(\s*)*('.implode('|', self::selects).')/mui', $query) !== 1
+            && preg_match('/\A\s*('.implode('|', self::SELECTS).')/mui', $query) !== 1
+            && preg_match('/^\s*(\(\s*)*('.implode('|', self::SELECTS).')/mui', $query) !== 1
         ) {
             if ($throw) {
-                throw new \UnexpectedValueException('Query is not one of '.implode(', ', self::selects).'.');
+                throw new \UnexpectedValueException('Query is not one of '.implode(', ', self::SELECTS).'.');
             }
             return false;
         }
