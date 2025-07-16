@@ -18,12 +18,12 @@ This is a robust `PDO` wrapper with some potentially useful features:
 This is a static class, so technically does not _require_ initiation, but you may want to do that regardless before your first query, to update settings and establish connection.
 
 ```php
-new \Simbiat\Database\Query(?\PDO $dbh = null, ?int $maxRunTime = null, ?int $maxTries = null, ?int $sleep = null, bool $transaction = true, bool $debug = false);
+new \Simbiat\Database\Query(?\PDO $dbh = null, ?int $max_run_time = null, ?int $max_tries = null, ?int $sleep = null, bool $transaction = true, bool $debug = false);
 ```
 
 - `$dbh` - `PDO` object to use for database connection. If not provided, the class expects the existence of `\Simbiat\Database\Pool` ([DB-Pool](https://github.com/Simbiat/db-pool)) to use that instead. If `DB-Pool` is not used it's enough to provide the object once, as it will persist in all following calls if `null` is passed to constructor.
-- `$maxRunTime` - Maximum time (in seconds) for the query (for `set_time_limit`). Will persist in next calls, if `null` is passed to constructor.
-- `$maxTries` - Number of times to retry in case of a deadlock. Will persist in next calls, if `null` is passed to constructor.
+- `$max_run_time` - Maximum time (in seconds) for the query (for `set_time_limit`). Will persist in next calls, if `null` is passed to constructor.
+- `$max_tries` - Number of times to retry in case of a deadlock. Will persist in next calls, if `null` is passed to constructor.
 - `$sleep` - Time (in seconds) to wait between retries in a case of deadlock. Will persist in next calls, if `null` is passed to constructor.
 - `$transaction` - Flag whether to use `TRANSACTION` mode. `true` by default. Will be set to `false` if single `SELECT` is sent. Resets to `true` on every following call.
 - `$debug` - Debug mode. In case of errors will output some extra details to help debug what went wrong. Resets to `false` on every following call.
@@ -41,16 +41,16 @@ since all the settings are public static ones.
 To run a query, use one of the below commands depending on whether you need to change some setting (`dbh` in the example) or not:
 
 ```php
-new \Simbiat\Database\Query($dbh)::query(string|array $queries, array $bindings = [], int $fetch_mode = \PDO::FETCH_ASSOC, int|string|object|null|callable $fetch_argument = null, array $constructorArgs = [], #[ExpectedValues(self::flavors)] string $return = 'bool');
+new \Simbiat\Database\Query($dbh)::query(string|array $queries, array $bindings = [], int $fetch_mode = \PDO::FETCH_ASSOC, int|string|object|null|callable $fetch_argument = null, array $constructor_args = [], #[ExpectedValues(self::flavors)] string $return = 'bool');
 
-\Simbiat\Database\Query::query(string|array $queries, array $bindings = [], int $fetch_mode = \PDO::FETCH_ASSOC, int|string|object|null|callable $fetch_argument = null, array $constructorArgs = [], #[ExpectedValues(self::flavors)] string $return = 'bool');
+\Simbiat\Database\Query::query(string|array $queries, array $bindings = [], int $fetch_mode = \PDO::FETCH_ASSOC, int|string|object|null|callable $fetch_argument = null, array $constructor_args = [], #[ExpectedValues(self::flavors)] string $return = 'bool');
 ```
 
 - `$queries` - Query or queries to run. Either a string or an array. String will be split, so you can send multiple queries in one go, but for such a use case an array is advisable, since complex queries or queries with certain literals can be split incorrectly. The array can be sent either as `[0 => 'query1', 1 => 'query2']` or `[0 => [0 => 'query1', 1 => $bindings1], 1 => [0 => 'query2', 1 => $bindings2]]` where `$binding1` and `$binding2` are optional per query bindings as per [DB-Binder's](https://github.com/Simbiat/db-binder) logic. Note that in the case of per-query bindings, the query needs to always be the first element, and the bindings array — the second one. Alternatively, use an associative array with `query` and `bindings` keys respectively.
 - `$bindings` - Global bindings that need to be applied to all queries as per [DB-Binder's](https://github.com/Simbiat/db-binder) logic. Note, that for merging of the arrays `+` operator is used instead of `array_merge`, and global bindings are added to "local" ones, which means that in case of duplicate keys the "local" ones will take precedence.
 - `$fetch_mode` - `FETCH` mode used by `SELECT` queries. Needs to be respective `\PDO::FETCH_*` variable.
 - `$fetch_argument` - Optional argument for various `FETCH` modes, like column number for `\PDO::FETCH_COLUMN`, callable for `\PDO::FETCH_FUNC`.
-- `$constructorArgs` - `ConstructorArgs` for `fetchAll` PDO function. Used only for `\PDO::FETCH_CLASS` mode.
+- `$constructor_args` - `ConstructorArgs` for `fetchAll` PDO function. Used only for `\PDO::FETCH_CLASS` mode.
 - `$return` - Hint to change the type ("flavor") of return on success. The default is `bool`, refer below.
 
 ### Flavors
@@ -68,9 +68,9 @@ new \Simbiat\Database\Query($dbh)::query(string|array $queries, array $bindings 
 - `affected` - Returns number of affected rows. Works with any type of query, but `INSERT`, `UPDATE` and `DELETE` would make the most sense here. Any number of queries can be used, the number will be the sum of rows affected by each one of them.
 
 If required, you can access the results of queries separately using respective public static properties:
-- `$lastResult` - results of last `SELECT`.
-- `$lastAffected` - number of rows affected by the last set of queries.
-- `$lastId` - ID of last inserted row when dealing with `AUTO_INCREMENT`.
+- `$last_result` - results of last `SELECT`.
+- `$last_affected` - number of rows affected by the last set of queries.
+- `$last_id` - ID of last inserted row when dealing with `AUTO_INCREMENT`.
 
 ### Useful functions
 
