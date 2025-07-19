@@ -105,7 +105,7 @@ class Query
     public function __construct(?\PDO $dbh = null, ?int $max_run_time = null, ?int $max_tries = null, ?int $sleep = null, bool $transaction = true, bool $debug = false)
     {
         if ($dbh === null) {
-            if (method_exists(Pool::class, 'openConnection')) {
+            if (\method_exists(Pool::class, 'openConnection')) {
                 self::$dbh = Pool::openConnection();
                 if (self::$dbh === null) {
                     throw new \RuntimeException('Pool class loaded but no connection was returned and no PDO object provided.');
@@ -157,7 +157,7 @@ class Query
             throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but it is not supported.');
         }
         if (in_array($return, ['column', 'value', 'count'], true)) {
-            if (is_int($fetch_argument) || $fetch_argument === null) {
+            if (\is_int($fetch_argument) || $fetch_argument === null) {
                 $fetch_mode = \PDO::FETCH_COLUMN;
             } else {
                 throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but `$fetch_argument` is not an integer.');
@@ -181,7 +181,7 @@ class Query
                 self::except($queries, $error_message, $exception);
                 #If deadlock - sleep and then retry
                 if (self::$deadlock) {
-                    sleep(self::$sleep);
+                    \sleep(self::$sleep);
                     continue;
                 }
                 throw new \RuntimeException($error_message, 0, $exception);
@@ -225,25 +225,25 @@ class Query
     {
         #Check if a query string was sent
         if (is_string($queries)) {
-            if (preg_match('/^\s*$/', $queries) === 1) {
+            if (\preg_match('/^\s*$/', $queries) === 1) {
                 throw new \UnexpectedValueException('Query is an empty string.');
             }
             #Split the string to an array of queries (in case multiple was sent as 1 string)
             $queries = self::stringToQueries($queries);
         }
         #Ensure integer keys
-        $queries = array_values($queries);
+        $queries = \array_values($queries);
         #Iterrate over array to merge binding
         foreach ($queries as $key => $array_to_process) {
             #Ensure integer keys
-            if (is_array($array_to_process)) {
+            if (\is_array($array_to_process)) {
                 $queries[$key] = [0 => $array_to_process['query'] ?? $array_to_process[0] ?? null, 1 => $array_to_process['bindings'] ?? $array_to_process[1] ?? []];
             } else {
                 $queries[$key] = [0 => $array_to_process, 1 => []];
             }
-            $queries[$key] = array_values(is_array($array_to_process) ? $array_to_process : [0 => $array_to_process, 1 => []]);
+            $queries[$key] = \array_values(\is_array($array_to_process) ? $array_to_process : [0 => $array_to_process, 1 => []]);
             #Check if the query is a string
-            if (!is_string($queries[$key][0]) || preg_match('/^\s*$/', $queries[$key][0]) === 1) {
+            if (!is_string($queries[$key][0]) || \preg_match('/^\s*$/', $queries[$key][0]) === 1) {
                 #Exit earlier for speed
                 throw new \UnexpectedValueException('Query #'.$key.' is not a valid string.');
             }
@@ -260,7 +260,7 @@ class Query
         if (count($queries) > 1) {
             foreach ($queries as $key => $array_to_process) {
                 #Check if the query is `SELECT` or a comment
-                if (self::isSelect($array_to_process[0], false) || preg_match('/^\s*(--|#|\/\*).*$/', $array_to_process[0]) === 1) {
+                if (self::isSelect($array_to_process[0], false) || \preg_match('/^\s*(--|#|\/\*).*$/', $array_to_process[0]) === 1) {
                     unset($queries[$key]);
                 }
             }
@@ -293,10 +293,10 @@ class Query
                 self::$single_select = true;
                 self::$transaction = false;
                 #Add `LIMIT 1` to the query if it's not already there to help reduce the use of resources.
-                if ($return === 'row' && preg_match('/\s*LIMIT\s+(\d+\s*,\s*)?\d+\s*;?\s*$/ui', $queries[0][0]) !== 1) {
+                if ($return === 'row' && \preg_match('/\s*LIMIT\s+(\d+\s*,\s*)?\d+\s*;?\s*$/ui', $queries[0][0]) !== 1) {
                     #EA thinks the variable can be a string, but it will never be one at this point.
                     /** @noinspection UnsupportedStringOffsetOperationsInspection */
-                    $queries[0][0] = preg_replace(['/(;?\s*\z)/mui', '/\z/mui'], ['', ' LIMIT 0, 1;'], $queries[0][0]);
+                    $queries[0][0] = \preg_replace(['/(;?\s*\z)/mui', '/\z/mui'], ['', ' LIMIT 0, 1;'], $queries[0][0]);
                 }
             } else {
                 if (!in_array($return, ['increment', 'bool', 'affected'])) {
@@ -325,18 +325,18 @@ class Query
         if (isset(self::$sql) && self::$debug) {
             self::$sql->debugDumpParams();
             echo $error_message;
-            ob_flush();
-            flush();
+            \ob_flush();
+            \flush();
         }
         #Check if it's a deadlock. Unbuffered queries are not deadlock, but practice showed that in some cases this error is thrown when there is a lock on resources, and not really an issue with (un)buffered queries. Retrying may help in those cases.
-        if (isset(self::$sql) && (self::$sql->errorCode() === '40001' || preg_match('/(deadlock|try restarting transaction|Cannot execute queries while other unbuffered queries are active)/mi', $error_message) === 1)) {
+        if (isset(self::$sql) && (self::$sql->errorCode() === '40001' || \preg_match('/(deadlock|try restarting transaction|Cannot execute queries while other unbuffered queries are active)/mi', $error_message) === 1)) {
             self::$deadlock = true;
         } else {
             self::$deadlock = false;
             #Set error message
             if (isset(self::$current_key)) {
                 try {
-                    $error_message = 'Failed to run query `'.$queries[self::$current_key][0].'`'.(!empty(self::$current_bindings) ? ' with following bindings: '.json_encode(self::$current_bindings, JSON_THROW_ON_ERROR) : '');
+                    $error_message = 'Failed to run query `'.$queries[self::$current_key][0].'`'.(!empty(self::$current_bindings) ? ' with following bindings: '.\json_encode(self::$current_bindings, \JSON_THROW_ON_ERROR) : '');
                 } catch (\JsonException) {
                     $error_message = 'Failed to run query `'.$queries[self::$current_key][0].'`'.(!empty(self::$current_bindings) ? ' with following bindings: `Failed to JSON Encode bindings`' : '');
                 }
@@ -400,16 +400,16 @@ class Query
                 Bind::bindMultiple(self::$sql, self::$current_bindings);
             }
             #Increasing time limit for potentially long operations (like `OPTIMIZE`)
-            set_time_limit(self::$max_run_time);
+            \set_time_limit(self::$max_run_time);
             #Increase the number of queries
             self::$queries++;
             #Execute the query
-            $start = hrtime(true);
+            $start = \hrtime(true);
             self::$sql->execute();
             #Register statistics
-            $time = hrtime(true) - $start;
+            $time = \hrtime(true) - $start;
             #Check if this query has been registered already
-            $query_to_register = array_search($query[0], array_column(self::$timings, 'query'), true);
+            $query_to_register = \array_search($query[0], \array_column(self::$timings, 'query'), true);
             if ($query_to_register === false) {
                 #Not registered yet, so add it
                 self::$timings[] = [
@@ -423,8 +423,8 @@ class Query
             #If debug is enabled dump PDO details
             if (self::$debug) {
                 self::$sql->debugDumpParams();
-                ob_flush();
-                flush();
+                \ob_flush();
+                \flush();
             }
             /** @noinspection DisconnectedForeachInstructionInspection */
             if (self::$single_select) {
@@ -471,12 +471,12 @@ class Query
     public static function isSelect(string $query, bool $throw = true): bool
     {
         #First, check that the whole text does not start with any of SELECT-like statements or with `WITH` (CTE)
-        if (preg_match('/\A\s*WITH/mui', $query) !== 1
-            && preg_match('/\A\s*('.implode('|', self::SELECTS).')/mui', $query) !== 1
-            && preg_match('/^\s*(\(\s*)*('.implode('|', self::SELECTS).')/mui', $query) !== 1
+        if (\preg_match('/\A\s*WITH/mui', $query) !== 1
+            && \preg_match('/\A\s*('.\implode('|', self::SELECTS).')/mui', $query) !== 1
+            && \preg_match('/^\s*(\(\s*)*('.\implode('|', self::SELECTS).')/mui', $query) !== 1
         ) {
             if ($throw) {
-                throw new \UnexpectedValueException('Query is not one of '.implode(', ', self::SELECTS).'.');
+                throw new \UnexpectedValueException('Query is not one of '.\implode(', ', self::SELECTS).'.');
             }
             return false;
         }
