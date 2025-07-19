@@ -491,7 +491,7 @@ class Query
      */
     public static function isInsert(string $query, bool $throw = true): bool
     {
-        if (preg_match('/^\s*INSERT\s+INTO/ui', $query) === 1) {
+        if (\preg_match('/^\s*INSERT\s+INTO/ui', $query) === 1) {
             return true;
         }
         if ($throw) {
@@ -501,7 +501,7 @@ class Query
     }
     
     /**
-     * Helper function to allow splitting a string into an array of queries. May not work as expected with compelx queries or certain string literals.
+     * Helper function to allow splitting a string into an array of queries. May not work as expected with complex queries or certain string literals.
      * Regexp was taken from https://stackoverflow.com/questions/24423260/split-sql-statements-in-php-on-semicolons-but-not-inside-quotes and adjusted to handle `;` inside quotes.
      *
      * @param string $string
@@ -510,13 +510,13 @@ class Query
      */
     public static function stringToQueries(string $string): array
     {
-        $queries = preg_split('/((["\'])(?:\.|(?!\2).)*+\2|\([^()]*\))(*SKIP)(*FAIL)|(?<=;)(?! *$)/u', $string);
+        $queries = \preg_split('/((["\'])(?:\.|(?!\2).)*+\2|\([^()]*\))(*SKIP)(*FAIL)|(?<=;)(?! *$)/u', $string);
         $filtered = [];
         foreach ($queries as $query) {
             #Trim first
-            $query = preg_replace('/^(\s*)(.*)(\s*)$/u', '$2', $query);
+            $query = \preg_replace('/^(\s*)(.*)(\s*)$/u', '$2', $query);
             #Skip empty lines (can happen if there are empty ones before and after a query
-            if (preg_match('/^\s*$/', $query) === 0) {
+            if (\preg_match('/^\s*$/', $query) === 0) {
                 $filtered[] = $query;
             }
         }
