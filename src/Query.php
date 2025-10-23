@@ -52,9 +52,9 @@ class Query
      */
     public static bool $transaction = true;
     /**
-     * @var mixed Result of the last query
+     * @var null|array Result of the last query
      */
-    public static mixed $last_result = null;
+    public static null|array $last_result = null;
     /**
      * @var int Number of last affected rows (inserted, deleted, updated)
      */
@@ -79,7 +79,7 @@ class Query
      */
     private static ?array $current_bindings = null;
     /**
-     * Flag indicating a deadlock
+     * Flag indicating a concurrency lock (not necessarily, but mostly deadlocks)
      * @var bool
      */
     private static bool $deadlock = false;
@@ -205,7 +205,7 @@ class Query
                 return (int)(self::$last_result[0] ?? null);
             }
             if ($return === 'check') {
-                return !empty(self::$last_result);
+                return !(self::$last_result === null || self::$last_result === []);
             }
             return true;
         } while ($try <= self::$max_tries);
@@ -266,7 +266,7 @@ class Query
             }
         }
         #Check if the array of queries is empty
-        if (empty($queries)) {
+        if (count($queries) === 0) {
             throw new \UnexpectedValueException('No queries were provided to `query()` function or all of them were identified as SELECT-like statements.');
         }
         self::flavorCheck($queries, $return);
@@ -322,29 +322,34 @@ class Query
      */
     private static function except(array $queries, string $error_message, \Throwable $exception): void
     {
-        if (isset(self::$sql) && self::$debug) {
+        if (self::$sql !== null && self::$debug) {
             self::$sql->debugDumpParams();
             echo $error_message;
             \ob_flush();
             \flush();
         }
         #Check if it's a deadlock. Unbuffered queries are not deadlock, but practice showed that in some cases this error is thrown when there is a lock on resources, and not really an issue with (un)buffered queries. Retrying may help in those cases.
-        if (isset(self::$sql) && (self::$sql->errorCode() === '40001' || \preg_match('/(deadlock|try restarting transaction|Cannot execute queries while other unbuffered queries are active)/mi', $error_message) === 1)) {
+        if (self::$sql !== null && (self::$sql->errorCode() === '40001' ||
+                \preg_match(
+                    '/(deadlock|The database file is locked|database is locked|database table is locked|Lock wait timeout exceeded|try restarting transaction|Cannot execute queries while other unbuffered queries are active|Record has changed since last read in table)/mi',
+                    $error_message
+                ) === 1)
+        ) {
             self::$deadlock = true;
         } else {
             self::$deadlock = false;
             #Set error message
-            if (isset(self::$current_key)) {
+            if (self::$current_key !== null) {
                 try {
-                    $error_message = 'Failed to run query `'.$queries[self::$current_key][0].'`'.(!empty(self::$current_bindings) ? ' with following bindings: '.\json_encode(self::$current_bindings, \JSON_THROW_ON_ERROR) : '');
+                    $error_message = 'Failed to run query `'.$queries[self::$current_key][0].'`'.(!(self::$current_bindings === null || self::$current_bindings === []) ? ' with following bindings: '.\json_encode(self::$current_bindings, \JSON_THROW_ON_ERROR) : '');
                 } catch (\JsonException) {
-                    $error_message = 'Failed to run query `'.$queries[self::$current_key][0].'`'.(!empty(self::$current_bindings) ? ' with following bindings: `Failed to JSON Encode bindings`' : '');
+                    $error_message = 'Failed to run query `'.$queries[self::$current_key][0].'`'.(!(self::$current_bindings === null || self::$current_bindings === []) ? ' with following bindings: `Failed to JSON Encode bindings`' : '');
                 }
             } else {
                 $error_message = 'Failed to start or end transaction';
             }
         }
-        if (isset(self::$sql)) {
+        if (self::$sql !== null) {
             #Ensure the pointer is closed
             try {
                 self::$sql->closeCursor();
