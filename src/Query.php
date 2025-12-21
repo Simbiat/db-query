@@ -377,7 +377,7 @@ class Query
     private static function execute(array &$queries, int $fetch_mode = \PDO::FETCH_ASSOC, int|string|object|null|callable $fetch_argument = NULL, array $constructor_arguments = []): void
     {
         #Initiate transaction if we are using it
-        if (self::$transaction) {
+        if (self::$transaction && !self::$single_select && !self::$dbh->inTransaction()) {
             self::$dbh->beginTransaction();
         }
         #Loop through queries
