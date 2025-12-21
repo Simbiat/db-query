@@ -287,11 +287,9 @@ class Query
     {
         #Flag for SELECT, used as a sort of "cache" instead of counting values every time
         self::$single_select = false;
-        #If we have just 1 query, which is a `SELECT` - disable transaction
         if ((count($queries) === 1)) {
             if (self::isSelect($queries[0][0], false)) {
                 self::$single_select = true;
-                self::$transaction = false;
                 #Add `LIMIT 1` to the query if it's not already there to help reduce the use of resources.
                 if ($return === 'row' && \preg_match('/\s*LIMIT\s+(\d+\s*,\s*)?\d+\s*;?\s*$/ui', $queries[0][0]) !== 1) {
                     #EA thinks the variable can be a string, but it will never be one at this point.
@@ -341,9 +339,9 @@ class Query
             #Set error message
             if (self::$current_key !== null) {
                 try {
-                    $error_message = 'Failed to run query `'.$queries[self::$current_key][0].'`'.(!(self::$current_bindings === null || self::$current_bindings === []) ? ' with following bindings: '.\json_encode(self::$current_bindings, \JSON_THROW_ON_ERROR) : '');
+                    $error_message = 'Failed to run query `'.$queries[self::$current_key][0].'`'.(!(self::$current_bindings === null || self::$current_bindings === []) ? ' with following bindings: '.\json_encode(self::$current_bindings, \JSON_THROW_ON_ERROR) : '').'. Exception message: '.$exception->getMessage();
                 } catch (\JsonException) {
-                    $error_message = 'Failed to run query `'.$queries[self::$current_key][0].'`'.(!(self::$current_bindings === null || self::$current_bindings === []) ? ' with following bindings: `Failed to JSON Encode bindings`' : '');
+                    $error_message = 'Failed to run query `'.$queries[self::$current_key][0].'`'.(!(self::$current_bindings === null || self::$current_bindings === []) ? ' with following bindings: `Failed to JSON Encode bindings`' : '').'. Exception message: '.$exception->getMessage();
                 }
             } else {
                 $error_message = 'Failed to start or end transaction';
