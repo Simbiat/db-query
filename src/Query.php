@@ -16,7 +16,7 @@ class Query
     /**
      * @var null|\PDO PDO object to run queries against
      */
-    public static ?\PDO $dbh = null;
+    private(set) static ?\PDO $dbh = null;
     /**
      * @var array List of functions that may return rows
      */
@@ -26,43 +26,43 @@ class Query
     /**
      * @var int Maximum time (in seconds) for the query (for `set_time_limit`)
      */
-    public static int $max_run_time = 3600;
+    private(set) static int $max_run_time = 3600;
     /**
      * @var int Number of times to retry in case of deadlock
      */
-    public static int $max_tries = 5;
+    private(set) static int $max_tries = 5;
     /**
      * @var int Time (in seconds) to wait between retries in case of deadlock
      */
-    public static int $sleep = 5;
+    private(set) static int $sleep = 5;
     /**
      * @var int Number of queries ran. Static for convenience, in case the object gets destroyed, but you still want to get the total number
      */
-    public static int $queries = 0;
+    private(set) static int $queries = 0;
     /**
      * @var array Timing statistics for each query
      */
-    public static array $timings = [];
+    private(set) static array $timings = [];
     /**
      * @var bool Debug mode
      */
-    public static bool $debug = false;
+    private(set) static bool $debug = false;
     /**
      * @var bool Whether transaction mode is to be used for the current run
      */
-    public static bool $transaction = true;
+    private(set) static bool $transaction = true;
     /**
      * @var null|array Result of the last query
      */
-    public static null|array $last_result = null;
+    private(set) static null|array $last_result = null;
     /**
      * @var int Number of last affected rows (inserted, deleted, updated)
      */
-    public static int $last_affected = 0;
+    private(set) static int $last_affected = 0;
     /**
      * @var null|string|false ID of the last INSERT
      */
-    public static null|string|false $last_id = null;
+    private(set) static null|string|false $last_id = null;
     /**
      * Internal variable to store \PDOStatement
      * @var \PDOStatement|null
