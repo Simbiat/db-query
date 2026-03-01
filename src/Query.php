@@ -355,7 +355,7 @@ class Query
                 #Do nothing, most likely fails due to non-existent cursor.
             }
         }
-        if (self::$dbh->inTransaction()) {
+        if (self::$dbh && self::$dbh->inTransaction()) {
             self::$dbh->rollBack();
             if (!self::$deadlock) {
                 throw new \RuntimeException($error_message, 0, $exception);
@@ -377,7 +377,7 @@ class Query
     private static function execute(array &$queries, int $fetch_mode = \PDO::FETCH_ASSOC, int|string|object|null|callable $fetch_argument = NULL, array $constructor_arguments = []): void
     {
         #Initiate transaction if we are using it
-        if (self::$transaction && !self::$single_select && !self::$dbh->inTransaction()) {
+        if (self::$dbh && self::$transaction && !self::$single_select && !self::$dbh->inTransaction()) {
             self::$dbh->beginTransaction();
         }
         #Loop through queries
@@ -459,7 +459,7 @@ class Query
             self::$last_id = false;
         }
         #Initiate a transaction if we are using it
-        if (self::$transaction && self::$dbh->inTransaction()) {
+        if (self::$dbh && self::$transaction && self::$dbh->inTransaction()) {
             self::$dbh->commit();
         }
     }
