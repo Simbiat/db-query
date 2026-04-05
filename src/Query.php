@@ -4,6 +4,7 @@ declare(strict_types = 1);
 namespace Simbiat\Database;
 
 use JetBrains\PhpStorm\ExpectedValues;
+use Pdo\Mysql;
 use function count;
 use function in_array;
 use function is_string;
@@ -394,7 +395,7 @@ class Query
             #Prepare the query
             if (self::$dbh->getAttribute(\PDO::ATTR_DRIVER_NAME) === 'mysql') {
                 #Force the buffered query for MySQL
-                self::$sql = self::$dbh->prepare($query[0], [\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true]);
+                self::$sql = self::$dbh->prepare($query[0], [Mysql::ATTR_USE_BUFFERED_QUERY => true]);
             } else {
                 self::$sql = self::$dbh->prepare($query[0]);
             }
