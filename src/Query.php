@@ -5,6 +5,7 @@ namespace Simbiat\Database;
 
 use JetBrains\PhpStorm\ExpectedValues;
 use Pdo\Mysql;
+use Simbiat\StringHelpers\Sanitize;
 use function count;
 use function in_array;
 use function is_string;
@@ -226,7 +227,7 @@ class Query
     {
         #Check if a query string was sent
         if (is_string($queries)) {
-            if (\preg_match('/^\s*$/', $queries) === 1) {
+            if (Sanitize::whiteString($queries)) {
                 throw new \UnexpectedValueException('Query is an empty string.');
             }
             #Split the string to an array of queries (in case multiple was sent as 1 string)
@@ -244,7 +245,7 @@ class Query
             }
             $queries[$key] = \array_values(\is_array($array_to_process) ? $array_to_process : [0 => $array_to_process, 1 => []]);
             #Check if the query is a string
-            if (!is_string($queries[$key][0]) || \preg_match('/^\s*$/', $queries[$key][0]) === 1) {
+            if (!is_string($queries[$key][0]) || Sanitize::whiteString($queries[$key][0])) {
                 #Exit earlier for speed
                 throw new \UnexpectedValueException('Query #'.$key.' is not a valid string.');
             }
@@ -520,7 +521,7 @@ class Query
             #Trim first
             $query = \preg_replace('/^(\s*)(.*)(\s*)$/u', '$2', $query);
             #Skip empty lines (can happen if there are empty ones before and after a query
-            if (\preg_match('/^\s*$/', $query) === 0) {
+            if (!Sanitize::whiteString($query)) {
                 $filtered[] = $query;
             }
         }

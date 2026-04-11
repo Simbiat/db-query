@@ -22,7 +22,8 @@
     "require": {
         "php": "^8.5",
         "ext-pdo": "*",
-        "simbiat/db-binder": "^1"
+        "simbiat/db-binder": "^1",
+        "simbiat/stringhelpers": "^2.0"
     },
     "replace": {
         "simbiat/database": "*"
