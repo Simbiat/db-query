@@ -249,12 +249,10 @@ class Query
                 #Exit earlier for speed
                 throw new \UnexpectedValueException('Query #'.$key.' is not a valid string.');
             }
-            #Merge bindings. Suppressing inspection, since we always have an array due to explicit conversion on a previous step
+            #Merge bindings
             if (empty($queries[$key][1])) {
-                /** @noinspection UnsupportedStringOffsetOperationsInspection */
                 $queries[$key][1] = $bindings;
             } else {
-                /** @noinspection UnsupportedStringOffsetOperationsInspection */
                 $queries[$key][1] += $bindings;
             }
         }
@@ -294,8 +292,6 @@ class Query
                 self::$single_select = true;
                 #Add `LIMIT 1` to the query if it's not already there to help reduce the use of resources.
                 if ($return === 'row' && \preg_match('/\s*LIMIT\s+(\d+\s*,\s*)?\d+\s*;?\s*$/ui', $queries[0][0]) !== 1) {
-                    #EA thinks the variable can be a string, but it will never be one at this point.
-                    /** @noinspection UnsupportedStringOffsetOperationsInspection */
                     $queries[0][0] = \preg_replace(['/(;?\s*\z)/mui', '/\z/mui'], ['', ' LIMIT 0, 1;'], $queries[0][0]);
                 }
             } else {
