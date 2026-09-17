@@ -156,10 +156,10 @@ class Query
      */
     public static function query(string|array $queries, array $bindings = [], int $fetch_mode = \PDO::FETCH_ASSOC, int|string|object|null|callable $fetch_argument = null, array $constructor_args = [], #[ExpectedValues(self::FLAVORS)] string $return = 'bool'): mixed
     {
-        if (!in_array($return, self::FLAVORS, true)) {
+        if (!\in_array($return, self::FLAVORS, true)) {
             throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but it is not supported.');
         }
-        if (in_array($return, ['column', 'value', 'count'], true)) {
+        if (\in_array($return, ['column', 'value', 'count'], true)) {
             if (\is_int($fetch_argument) || $fetch_argument === null) {
                 $fetch_mode = \PDO::FETCH_COLUMN;
             } else {
@@ -195,7 +195,7 @@ class Query
             if ($return === 'affected') {
                 return self::$last_affected;
             }
-            if (in_array($return, ['all', 'column', 'pair', 'unique'])) {
+            if (\in_array($return, ['all', 'column', 'pair', 'unique'])) {
                 return self::$last_result;
             }
             if ($return === 'row') {
@@ -205,7 +205,7 @@ class Query
                 return (self::$last_result[0] ?? null);
             }
             if ($return === 'count') {
-                return (int)(self::$last_result[0] ?? null);
+                return (int) (self::$last_result[0] ?? null);
             }
             if ($return === 'check') {
                 return !(self::$last_result === null || self::$last_result === []);
@@ -227,7 +227,7 @@ class Query
     private static function preprocess(string|array &$queries, array $bindings, string $return): void
     {
         // Check if a query string was sent
-        if (is_string($queries)) {
+        if (\is_string($queries)) {
             if (Sanitize::whiteString($queries)) {
                 throw new \UnexpectedValueException('Query is an empty string.');
             }
@@ -246,7 +246,7 @@ class Query
             }
             $queries[$key] = \array_values(\is_array($array_to_process) ? $array_to_process : [0 => $array_to_process, 1 => []]);
             // Check if the query is a string
-            if (!is_string($queries[$key][0]) || Sanitize::whiteString($queries[$key][0])) {
+            if (!\is_string($queries[$key][0]) || Sanitize::whiteString($queries[$key][0])) {
                 // Exit earlier for speed
                 throw new \UnexpectedValueException('Query #'.$key.' is not a valid string.');
             }
@@ -258,7 +258,7 @@ class Query
             }
         }
         // Remove any SELECT queries and comments if more than 1 query is sent
-        if (count($queries) > 1) {
+        if (\count($queries) > 1) {
             foreach ($queries as $key => $array_to_process) {
                 // Check if the query is `SELECT` or a comment
                 if (self::isSelect($array_to_process[0], false) || \preg_match('/^\s*(--|#|\/\*).*$/', $array_to_process[0]) === 1) {
@@ -267,7 +267,7 @@ class Query
             }
         }
         // Check if the array of queries is empty
-        if (count($queries) === 0) {
+        if (\count($queries) === 0) {
             throw new \UnexpectedValueException('No queries were provided to `query()` function or all of them were identified as SELECT-like statements.');
         }
         self::flavorCheck($queries, $return);
@@ -288,7 +288,7 @@ class Query
     {
         // Flag for SELECT, used as a sort of "cache" instead of counting values every time
         self::$single_select = false;
-        if ((count($queries) === 1)) {
+        if ((\count($queries) === 1)) {
             if (self::isSelect($queries[0][0], false)) {
                 self::$single_select = true;
                 // Add `LIMIT 1` to the query if it's not already there to help reduce the use of resources.
@@ -296,7 +296,7 @@ class Query
                     $queries[0][0] = \preg_replace(['/(;?\s*\z)/mui', '/\z/mui'], ['', ' LIMIT 0, 1;'], $queries[0][0]);
                 }
             } else {
-                if (!in_array($return, ['increment', 'bool', 'affected'])) {
+                if (!\in_array($return, ['increment', 'bool', 'affected'])) {
                     throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but the query is not a `SELECT`.');
                 }
                 if ($return === 'increment' && !self::isInsert($queries[0][0], false)) {
@@ -431,9 +431,9 @@ class Query
             /** @noinspection DisconnectedForeachInstructionInspection */
             if (self::$single_select) {
                 // Adjust fetching mode
-                if (in_array($fetch_mode, [\PDO::FETCH_COLUMN, \PDO::FETCH_FUNC, \PDO::FETCH_INTO, \PDO::FETCH_FUNC, \PDO::FETCH_SERIALIZE], true)) {
+                if (\in_array($fetch_mode, [\PDO::FETCH_COLUMN, \PDO::FETCH_FUNC, \PDO::FETCH_INTO, \PDO::FETCH_FUNC, \PDO::FETCH_SERIALIZE], true)) {
                     self::$last_result = self::$sql->fetchAll($fetch_mode, $fetch_argument);
-                } elseif (in_array($fetch_mode, [\PDO::FETCH_CLASS, \PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE], true)) {
+                } elseif (\in_array($fetch_mode, [\PDO::FETCH_CLASS, \PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE], true)) {
                     self::$last_result = self::$sql->fetchAll($fetch_mode, $fetch_argument, $constructor_arguments);
                 } else {
                     self::$last_result = self::$sql->fetchAll($fetch_mode);
