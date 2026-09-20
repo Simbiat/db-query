@@ -68,31 +68,37 @@ class Query
     private(set) static null|string|false $last_id = null;
     /**
      * Internal variable to store \PDOStatement
+     *
      * @var \PDOStatement|null
      */
     private static ?\PDOStatement $sql = null;
     /**
      * Stores current key that represents the current query ID
+     *
      * @var string|int|null
      */
     private static string|int|null $current_key = null;
     /**
      * Holds bindings for the current query
+     *
      * @var array|null
      */
     private static ?array $current_bindings = null;
     /**
      * Flag indicating a concurrency lock (not necessarily, but mostly deadlocks)
+     *
      * @var bool
      */
     private static bool $deadlock = false;
     /**
      * Flag indicating that we have a single `SELECT` query
+     *
      * @var bool
      */
     private static bool $single_select = false;
     /**
      * Supported return flavors
+     *
      * @var array
      */
     private const array FLAVORS = ['bool', 'increment', 'affected', 'all', 'column', 'row', 'value', 'pair', 'unique', 'count', 'check'];
@@ -160,7 +166,10 @@ class Query
             throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but it is not supported.');
         }
         if (\in_array($return, ['column', 'value', 'count'], true)) {
-            if (\is_int($fetch_argument) || $fetch_argument === null) {
+            if (
+                \is_int($fetch_argument)
+                || $fetch_argument === null
+            ) {
                 $fetch_mode = \PDO::FETCH_COLUMN;
             } else {
                 throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but `$fetch_argument` is not an integer.');
@@ -185,8 +194,10 @@ class Query
                 // If deadlock - sleep and then retry
                 if (self::$deadlock) {
                     \sleep(self::$sleep);
+
                     continue;
                 }
+
                 throw new \RuntimeException($error_message, 0, $exception);
             }
             if ($return === 'increment') {
@@ -210,8 +221,10 @@ class Query
             if ($return === 'check') {
                 return !(self::$last_result === null || self::$last_result === []);
             }
+
             return true;
         } while ($try <= self::$max_tries);
+
         throw new \RuntimeException('Deadlock encountered for set maximum of '.self::$max_tries.' tries.');
     }
 
@@ -246,7 +259,10 @@ class Query
             }
             $queries[$key] = \array_values(\is_array($array_to_process) ? $array_to_process : [0 => $array_to_process, 1 => []]);
             // Check if the query is a string
-            if (!\is_string($queries[$key][0]) || Sanitize::whiteString($queries[$key][0])) {
+            if (
+                !\is_string($queries[$key][0])
+                || Sanitize::whiteString($queries[$key][0])
+            ) {
                 // Exit earlier for speed
                 throw new \UnexpectedValueException('Query #'.$key.' is not a valid string.');
             }
@@ -261,7 +277,10 @@ class Query
         if (\count($queries) > 1) {
             foreach ($queries as $key => $array_to_process) {
                 // Check if the query is `SELECT` or a comment
-                if (self::isSelect($array_to_process[0], false) || \preg_match('/^\s*(--|#|\/\*).*$/', $array_to_process[0]) === 1) {
+                if (
+                    self::isSelect($array_to_process[0], false)
+                    || \preg_match('/^\s*(--|#|\/\*).*$/', $array_to_process[0]) === 1
+                ) {
                     unset($queries[$key]);
                 }
             }
@@ -279,6 +298,7 @@ class Query
 
     /**
      * Helper to validate return flavor is supported by the current query or list of queries
+     *
      * @param array  $queries
      * @param string $return
      *
@@ -292,18 +312,27 @@ class Query
             if (self::isSelect($queries[0][0], false)) {
                 self::$single_select = true;
                 // Add `LIMIT 1` to the query if it's not already there to help reduce the use of resources.
-                if ($return === 'row' && \preg_match('/\s*LIMIT\s+(\d+\s*,\s*)?\d+\s*;?\s*$/ui', $queries[0][0]) !== 1) {
+                if (
+                    $return === 'row'
+                    && \preg_match('/\s*LIMIT\s+(\d+\s*,\s*)?\d+\s*;?\s*$/ui', $queries[0][0]) !== 1
+                ) {
                     $queries[0][0] = \preg_replace(['/(;?\s*\z)/mui', '/\z/mui'], ['', ' LIMIT 0, 1;'], $queries[0][0]);
                 }
             } else {
                 if (!\in_array($return, ['increment', 'bool', 'affected'])) {
                     throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but the query is not a `SELECT`.');
                 }
-                if ($return === 'increment' && !self::isInsert($queries[0][0], false)) {
+                if (
+                    $return === 'increment'
+                    && !self::isInsert($queries[0][0], false)
+                ) {
                     throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but the query is not an `INSERT`.');
                 }
             }
-        } elseif ($return !== 'bool' && $return !== 'affected') {
+        } elseif (
+            $return !== 'bool'
+            && $return !== 'affected'
+        ) {
             throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but there are multiple queries provided.');
         }
     }
@@ -319,7 +348,10 @@ class Query
      */
     private static function except(array $queries, string $error_message, \Throwable $exception): void
     {
-        if (self::$sql !== null && self::$debug) {
+        if (
+            self::$sql !== null
+            && self::$debug
+        ) {
             self::$sql->debugDumpParams();
             echo $error_message;
             \ob_flush();
@@ -354,7 +386,10 @@ class Query
                 // Do nothing, most likely fails due to non-existent cursor.
             }
         }
-        if (self::$dbh && self::$dbh->inTransaction()) {
+        if (
+            self::$dbh
+            && self::$dbh->inTransaction()
+        ) {
             self::$dbh->rollBack();
             if (!self::$deadlock) {
                 throw new \RuntimeException($error_message, 0, $exception);
@@ -371,12 +406,16 @@ class Query
      * @param array                           $constructor_arguments
      *
      * @return void
-     *
      */
-    private static function execute(array &$queries, int $fetch_mode = \PDO::FETCH_ASSOC, int|string|object|null|callable $fetch_argument = NULL, array $constructor_arguments = []): void
+    private static function execute(array &$queries, int $fetch_mode = \PDO::FETCH_ASSOC, int|string|object|null|callable $fetch_argument = null, array $constructor_arguments = []): void
     {
         // Initiate transaction if we are using it
-        if (self::$dbh && self::$transaction && !self::$single_select && !self::$dbh->inTransaction()) {
+        if (
+            self::$dbh
+            && self::$transaction
+            && !self::$single_select
+            && !self::$dbh->inTransaction()
+        ) {
             self::$dbh->beginTransaction();
         }
         // Loop through queries
@@ -458,13 +497,18 @@ class Query
             self::$last_id = false;
         }
         // Initiate a transaction if we are using it
-        if (self::$dbh && self::$transaction && self::$dbh->inTransaction()) {
+        if (
+            self::$dbh
+            && self::$transaction
+            && self::$dbh->inTransaction()
+        ) {
             self::$dbh->commit();
         }
     }
 
     /**
      * Helper function to check if a query is a select(able) one
+     *
      * @param string $query Query to check
      * @param bool   $throw Throw exception if not `SELECT` and this option is `true`.
      *
@@ -480,8 +524,10 @@ class Query
             if ($throw) {
                 throw new \UnexpectedValueException('Query is not one of '.\implode(', ', self::SELECTS).'.');
             }
+
             return false;
         }
+
         return true;
     }
 
@@ -499,6 +545,7 @@ class Query
         if ($throw) {
             throw new \UnexpectedValueException('Query is not INSERT.');
         }
+
         return false;
     }
 
@@ -522,6 +569,7 @@ class Query
                 $filtered[] = $query;
             }
         }
+
         return $filtered;
     }
 }
