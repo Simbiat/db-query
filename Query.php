@@ -7,9 +7,6 @@ namespace Simbiat\Database;
 use JetBrains\PhpStorm\ExpectedValues;
 use Pdo\Mysql;
 use Simbiat\StringHelpers\Sanitize;
-use function count;
-use function in_array;
-use function is_string;
 
 /**
  * Base class for various subclasses doing various database operations
@@ -20,76 +17,88 @@ class Query
      * @var null|\PDO PDO object to run queries against
      */
     private(set) static ?\PDO $dbh = null;
-    /**
-     * @var array List of functions that may return rows
-     */
+
     public const array SELECTS = [
-        'SELECT', 'SHOW', 'HANDLER', 'ANALYZE', 'CHECK', 'DESCRIBE', 'DESC', 'EXPLAIN', 'HELP', 'REPAIR', 'OPTIMIZE'
+        'SELECT', 'SHOW', 'HANDLER', 'ANALYZE', 'CHECK', 'DESCRIBE', 'DESC', 'EXPLAIN', 'HELP', 'REPAIR', 'OPTIMIZE',
     ];
     /**
      * @var int Maximum time (in seconds) for the query (for `set_time_limit`)
      */
     private(set) static int $max_run_time = 3600;
+
     /**
      * @var int Number of times to retry in case of deadlock
      */
     private(set) static int $max_tries = 5;
+
     /**
      * @var int Time (in seconds) to wait between retries in case of deadlock
      */
     private(set) static int $sleep = 5;
+
     /**
      * @var int Number of queries ran. Static for convenience, in case the object gets destroyed, but you still want to get the total number
      */
     private(set) static int $queries = 0;
+
     /**
      * @var array Timing statistics for each query
      */
     private(set) static array $timings = [];
+
     /**
      * @var bool Debug mode
      */
     private(set) static bool $debug = false;
+
     /**
      * @var bool Whether transaction mode is to be used for the current run
      */
     private(set) static bool $transaction = true;
+
     /**
      * @var null|array Result of the last query
      */
     private(set) static null|array $last_result = null;
+
     /**
      * @var int Number of last affected rows (inserted, deleted, updated)
      */
     private(set) static int $last_affected = 0;
+
     /**
      * @var null|string|false ID of the last INSERT
      */
     private(set) static null|string|false $last_id = null;
+
     /**
      * Internal variable to store \PDOStatement
      *
      * @var \PDOStatement|null
      */
     private static ?\PDOStatement $sql = null;
+
     /**
      * Stores current key that represents the current query ID
      *
      * @var string|int|null
      */
     private static string|int|null $current_key = null;
+
     /**
      * Holds bindings for the current query
      *
      * @var array|null
      */
     private static ?array $current_bindings = null;
+
     /**
      * Flag indicating a concurrency lock (not necessarily, but mostly deadlocks)
      *
      * @var bool
      */
     private static bool $deadlock = false;
+
     /**
      * Flag indicating that we have a single `SELECT` query
      *
@@ -99,7 +108,6 @@ class Query
     /**
      * Supported return flavors
      *
-     * @var array
      */
     private const array FLAVORS = ['bool', 'increment', 'affected', 'all', 'column', 'row', 'value', 'pair', 'unique', 'count', 'check'];
 
@@ -358,10 +366,11 @@ class Query
             \flush();
         }
         // Check if it's a deadlock. Unbuffered queries are not deadlock, but practice showed that in some cases this error is thrown when there is a lock on resources, and not really an issue with (un)buffered queries. Retrying may help in those cases.
-        if (self::$sql !== null && (self::$sql->errorCode() === '40001' ||
+        if (
+            self::$sql !== null && (self::$sql->errorCode() === '40001' ||
                 \preg_match(
                     '/(deadlock|The database file is locked|database is locked|database table is locked|Lock wait timeout exceeded|try restarting transaction|Cannot execute queries while other unbuffered queries are active|Record has changed since last read in table)/mi',
-                    $error_message
+                    $error_message,
                 ) === 1)
         ) {
             self::$deadlock = true;
@@ -517,7 +526,8 @@ class Query
     public static function isSelect(string $query, bool $throw = true): bool
     {
         // First, check that the whole text does not start with any of SELECT-like statements or with `WITH` (CTE)
-        if (\preg_match('/\A\s*WITH/mui', $query) !== 1
+        if (
+            \preg_match('/\A\s*WITH/mui', $query) !== 1
             && \preg_match('/\A\s*('.\implode('|', self::SELECTS).')/mui', $query) !== 1
             && \preg_match('/^\s*(\(\s*)*('.\implode('|', self::SELECTS).')/mui', $query) !== 1
         ) {
