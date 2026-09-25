@@ -11,7 +11,7 @@ use Simbiat\StringHelpers\Sanitize;
 /**
  * Base class for various subclasses doing various database operations
  */
-class Query
+final class Query
 {
     /**
      * @var null|\PDO PDO object to run queries against
@@ -122,13 +122,13 @@ class Query
     public function __construct(?\PDO $dbh = null, ?int $max_run_time = null, ?int $max_tries = null, ?int $sleep = null, bool $transaction = true, bool $debug = false)
     {
         if ($dbh === null) {
-            if (\method_exists(Pool::class, 'openConnection')) {
-                self::$dbh = Pool::openConnection();
-                if (self::$dbh === null) {
-                    throw new \RuntimeException('Pool class loaded but no connection was returned and no PDO object provided.');
-                }
-            } else {
+            if (!\method_exists(Pool::class, 'openConnection')) {
                 throw new \RuntimeException('Pool class not loaded and no PDO object provided.');
+            }
+
+            self::$dbh = Pool::openConnection();
+            if (self::$dbh === null) {
+                throw new \RuntimeException('Pool class loaded but no connection was returned and no PDO object provided.');
             }
         } else {
             self::$dbh = $dbh;
@@ -175,13 +175,13 @@ class Query
         }
         if (\in_array($return, ['column', 'value', 'count'], true)) {
             if (
-                \is_int($fetch_argument)
-                || $fetch_argument === null
+                !\is_int($fetch_argument)
+                && $fetch_argument !== null
             ) {
-                $fetch_mode = \PDO::FETCH_COLUMN;
-            } else {
                 throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but `$fetch_argument` is not an integer.');
             }
+
+            $fetch_mode = \PDO::FETCH_COLUMN;
         }
         if ($return === 'pair') {
             $fetch_mode = \PDO::FETCH_KEY_PAIR;
@@ -260,11 +260,7 @@ class Query
         // Iterate over array to merge binding
         foreach ($queries as $key => $array_to_process) {
             // Ensure integer keys
-            if (\is_array($array_to_process)) {
-                $queries[$key] = [0 => $array_to_process['query'] ?? $array_to_process[0] ?? null, 1 => $array_to_process['bindings'] ?? $array_to_process[1] ?? []];
-            } else {
-                $queries[$key] = [0 => $array_to_process, 1 => []];
-            }
+            $queries[$key] = \is_array($array_to_process) ? [0 => $array_to_process['query'] ?? $array_to_process[0] ?? null, 1 => $array_to_process['bindings'] ?? $array_to_process[1] ?? []] : [0 => $array_to_process, 1 => []];
             $queries[$key] = \array_values(\is_array($array_to_process) ? $array_to_process : [0 => $array_to_process, 1 => []]);
             // Check if the query is a string
             if (
@@ -396,13 +392,15 @@ class Query
             }
         }
         if (
-            self::$dbh
-            && self::$dbh->inTransaction()
+            !self::$dbh
+            || !self::$dbh->inTransaction()
         ) {
-            self::$dbh->rollBack();
-            if (!self::$deadlock) {
-                throw new \RuntimeException($error_message, 0, $exception);
-            }
+            return;
+        }
+
+        self::$dbh->rollBack();
+        if (!self::$deadlock) {
+            throw new \RuntimeException($error_message, 0, $exception);
         }
     }
 
