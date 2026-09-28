@@ -13,14 +13,20 @@ use Simbiat\StringHelpers\Sanitize;
  */
 final class Query
 {
-    /**
-     * @var null|\PDO PDO object to run queries against
-     */
-    private(set) static ?\PDO $dbh = null;
-
     public const array SELECTS = [
         'SELECT', 'SHOW', 'HANDLER', 'ANALYZE', 'CHECK', 'DESCRIBE', 'DESC', 'EXPLAIN', 'HELP', 'REPAIR', 'OPTIMIZE',
     ];
+
+    /**
+     * Supported return flavors
+     */
+    private const array FLAVORS = ['bool', 'increment', 'affected', 'all', 'column', 'row', 'value', 'pair', 'unique', 'count', 'check'];
+
+    /**
+     * @var \PDO|null PDO object to run queries against
+     */
+    private(set) static ?\PDO $dbh = null;
+
     /**
      * @var int Maximum time (in seconds) for the query (for `set_time_limit`)
      */
@@ -57,7 +63,7 @@ final class Query
     private(set) static bool $transaction = true;
 
     /**
-     * @var null|array Result of the last query
+     * @var array|null Result of the last query
      */
     private(set) static null|array $last_result = null;
 
@@ -67,7 +73,7 @@ final class Query
     private(set) static int $last_affected = 0;
 
     /**
-     * @var null|string|false ID of the last INSERT
+     * @var string|false|null ID of the last INSERT
      */
     private(set) static null|string|false $last_id = null;
 
@@ -105,11 +111,6 @@ final class Query
      * @var bool
      */
     private static bool $single_select = false;
-    /**
-     * Supported return flavors
-     *
-     */
-    private const array FLAVORS = ['bool', 'increment', 'affected', 'all', 'column', 'row', 'value', 'pair', 'unique', 'count', 'check'];
 
     /**
      * @param \PDO|null $dbh          PDO object to use for database connection. If not provided, the class expects the existence of `\Simbiat\Database\Pool` to use that instead.
@@ -162,7 +163,7 @@ final class Query
      * @param string|array                    $queries          Query/queries to run.
      * @param array                           $bindings         Global bindings that need to be applied to all queries.
      * @param int                             $fetch_mode       `FETCH` mode used by `SELECT` queries.
-     * @param int|string|object|null|callable $fetch_argument   Optional argument for various `FETCH` modes.
+     * @param int|string|object|callable|null $fetch_argument   Optional argument for various `FETCH` modes.
      * @param array                           $constructor_args `ConstructorArgs` for `fetchAll` PDO function. Used only for `\PDO::FETCH_CLASS` mode.
      * @param string                          $return           Hint to change the type of return on success. The default is `bool`, refer documentation for other values.
      *
@@ -193,7 +194,7 @@ final class Query
         // Set counter for tries
         $try = 0;
         do {
-            $try++;
+            ++$try;
             try {
                 self::execute($queries, $fetch_mode, $fetch_argument, $constructor_args);
             } catch (\Throwable $exception) {
@@ -221,7 +222,7 @@ final class Query
                 return self::$last_result[0] ?? [];
             }
             if ($return === 'value') {
-                return (self::$last_result[0] ?? null);
+                return self::$last_result[0] ?? null;
             }
             if ($return === 'count') {
                 return (int) (self::$last_result[0] ?? null);
@@ -234,6 +235,76 @@ final class Query
         } while ($try <= self::$max_tries);
 
         throw new \RuntimeException('Deadlock encountered for set maximum of '.self::$max_tries.' tries.');
+    }
+
+    /**
+     * Helper function to check if a query is a select(able) one
+     *
+     * @param string $query Query to check
+     * @param bool   $throw Throw exception if not `SELECT` and this option is `true`.
+     *
+     * @return bool
+     */
+    public static function isSelect(string $query, bool $throw = true): bool
+    {
+        // First, check that the whole text does not start with any of SELECT-like statements or with `WITH` (CTE)
+        if (
+            \preg_match('/\A\s*WITH/mui', $query) !== 1
+            && \preg_match('/\A\s*('.\implode('|', self::SELECTS).')/mui', $query) !== 1
+            && \preg_match('/^\s*(\(\s*)*('.\implode('|', self::SELECTS).')/mui', $query) !== 1
+        ) {
+            if ($throw) {
+                throw new \UnexpectedValueException('Query is not one of '.\implode(', ', self::SELECTS).'.');
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Checks if a query is an INSERT
+     *
+     * @param string $query
+     * @param bool   $throw
+     *
+     * @return bool
+     */
+    public static function isInsert(string $query, bool $throw = true): bool
+    {
+        if (\preg_match('/^\s*INSERT\s+INTO/ui', $query) === 1) {
+            return true;
+        }
+        if ($throw) {
+            throw new \UnexpectedValueException('Query is not INSERT.');
+        }
+
+        return false;
+    }
+
+    /**
+     * Helper function to allow splitting a string into an array of queries. May not work as expected with complex queries or certain string literals.
+     * Regexp was taken from https://stackoverflow.com/questions/24423260/split-sql-statements-in-php-on-semicolons-but-not-inside-quotes and adjusted to handle `;` inside quotes.
+     *
+     * @param string $string
+     *
+     * @return array
+     */
+    public static function stringToQueries(string $string): array
+    {
+        $queries = \preg_split('/((["\'])(?:\.|(?!\2).)*+\2|\([^()]*\))(*SKIP)(*FAIL)|(?<=;)(?! *$)/u', $string);
+        $filtered = [];
+        foreach ($queries as $query) {
+            // Trim first
+            $query = \preg_replace('/^(\s*)(.*)(\s*)$/u', '$2', $query);
+            // Skip empty lines (can happen if there are empty ones before and after a query
+            if (!Sanitize::whiteString($query)) {
+                $filtered[] = $query;
+            }
+        }
+
+        return $filtered;
     }
 
     /**
@@ -260,7 +331,9 @@ final class Query
         // Iterate over array to merge binding
         foreach ($queries as $key => $array_to_process) {
             // Ensure integer keys
-            $queries[$key] = \is_array($array_to_process) ? [0 => $array_to_process['query'] ?? $array_to_process[0] ?? null, 1 => $array_to_process['bindings'] ?? $array_to_process[1] ?? []] : [0 => $array_to_process, 1 => []];
+            $queries[$key] = \is_array($array_to_process)
+                ? [0 => $array_to_process['query'] ?? $array_to_process[0] ?? null, 1 => $array_to_process['bindings'] ?? $array_to_process[1] ?? []]
+                : [0 => $array_to_process, 1 => []];
             $queries[$key] = \array_values(\is_array($array_to_process) ? $array_to_process : [0 => $array_to_process, 1 => []]);
             // Check if the query is a string
             if (
@@ -409,7 +482,7 @@ final class Query
      *
      * @param array                           $queries
      * @param int                             $fetch_mode
-     * @param int|string|object|null|callable $fetch_argument
+     * @param int|string|object|callable|null $fetch_argument
      * @param array                           $constructor_arguments
      *
      * @return void
@@ -450,7 +523,7 @@ final class Query
             // Increasing time limit for potentially long operations (like `OPTIMIZE`)
             \set_time_limit(self::$max_run_time);
             // Increase the number of queries
-            self::$queries++;
+            ++self::$queries;
             // Execute the query
             $start = \hrtime(true);
             self::$sql->execute();
@@ -511,73 +584,5 @@ final class Query
         ) {
             self::$dbh->commit();
         }
-    }
-
-    /**
-     * Helper function to check if a query is a select(able) one
-     *
-     * @param string $query Query to check
-     * @param bool   $throw Throw exception if not `SELECT` and this option is `true`.
-     *
-     * @return bool
-     */
-    public static function isSelect(string $query, bool $throw = true): bool
-    {
-        // First, check that the whole text does not start with any of SELECT-like statements or with `WITH` (CTE)
-        if (
-            \preg_match('/\A\s*WITH/mui', $query) !== 1
-            && \preg_match('/\A\s*('.\implode('|', self::SELECTS).')/mui', $query) !== 1
-            && \preg_match('/^\s*(\(\s*)*('.\implode('|', self::SELECTS).')/mui', $query) !== 1
-        ) {
-            if ($throw) {
-                throw new \UnexpectedValueException('Query is not one of '.\implode(', ', self::SELECTS).'.');
-            }
-
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * @param string $query
-     * @param bool   $throw
-     *
-     * @return bool
-     */
-    public static function isInsert(string $query, bool $throw = true): bool
-    {
-        if (\preg_match('/^\s*INSERT\s+INTO/ui', $query) === 1) {
-            return true;
-        }
-        if ($throw) {
-            throw new \UnexpectedValueException('Query is not INSERT.');
-        }
-
-        return false;
-    }
-
-    /**
-     * Helper function to allow splitting a string into an array of queries. May not work as expected with complex queries or certain string literals.
-     * Regexp was taken from https://stackoverflow.com/questions/24423260/split-sql-statements-in-php-on-semicolons-but-not-inside-quotes and adjusted to handle `;` inside quotes.
-     *
-     * @param string $string
-     *
-     * @return array
-     */
-    public static function stringToQueries(string $string): array
-    {
-        $queries = \preg_split('/((["\'])(?:\.|(?!\2).)*+\2|\([^()]*\))(*SKIP)(*FAIL)|(?<=;)(?! *$)/u', $string);
-        $filtered = [];
-        foreach ($queries as $query) {
-            // Trim first
-            $query = \preg_replace('/^(\s*)(.*)(\s*)$/u', '$2', $query);
-            // Skip empty lines (can happen if there are empty ones before and after a query
-            if (!Sanitize::whiteString($query)) {
-                $filtered[] = $query;
-            }
-        }
-
-        return $filtered;
     }
 }
