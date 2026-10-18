@@ -9,7 +9,7 @@ use Pdo\Mysql;
 use Simbiat\StringHelpers\Sanitize;
 
 /**
- * Base class for various subclasses doing various database operations
+ * Base class for various subclasses doing various database operations.
  */
 final class Query
 {
@@ -18,105 +18,105 @@ final class Query
     ];
 
     /**
-     * Supported return flavors
+     * Supported return flavors.
      */
     private const array FLAVORS = ['bool', 'increment', 'affected', 'all', 'column', 'row', 'value', 'pair', 'unique', 'count', 'check'];
 
     /**
-     * @var \PDO|null PDO object to run queries against
+     * @var null|\PDO PDO object to run queries against
      */
-    private(set) static ?\PDO $dbh = null;
+    public private(set) static ?\PDO $dbh = null;
 
     /**
      * @var int Maximum time (in seconds) for the query (for `set_time_limit`)
      */
-    private(set) static int $max_run_time = 3600;
+    public private(set) static int $max_run_time = 3600;
 
     /**
      * @var int Number of times to retry in case of deadlock
      */
-    private(set) static int $max_tries = 5;
+    public private(set) static int $max_tries = 5;
 
     /**
      * @var int Time (in seconds) to wait between retries in case of deadlock
      */
-    private(set) static int $sleep = 5;
+    public private(set) static int $sleep = 5;
 
     /**
      * @var int Number of queries ran. Static for convenience, in case the object gets destroyed, but you still want to get the total number
      */
-    private(set) static int $queries = 0;
+    public private(set) static int $queries = 0;
 
     /**
      * @var array Timing statistics for each query
      */
-    private(set) static array $timings = [];
+    public private(set) static array $timings = [];
 
     /**
      * @var bool Debug mode
      */
-    private(set) static bool $debug = false;
+    public private(set) static bool $debug = false;
 
     /**
      * @var bool Whether transaction mode is to be used for the current run
      */
-    private(set) static bool $transaction = true;
+    public private(set) static bool $transaction = true;
 
     /**
-     * @var array|null Result of the last query
+     * @var null|array Result of the last query
      */
-    private(set) static null|array $last_result = null;
+    public private(set) static ?array $last_result = null;
 
     /**
      * @var int Number of last affected rows (inserted, deleted, updated)
      */
-    private(set) static int $last_affected = 0;
+    public private(set) static int $last_affected = 0;
 
     /**
-     * @var string|false|null ID of the last INSERT
+     * @var null|false|string ID of the last INSERT
      */
-    private(set) static null|string|false $last_id = null;
+    public private(set) static null|false|string $last_id = null;
 
     /**
-     * Internal variable to store \PDOStatement
+     * Internal variable to store \PDOStatement.
      *
-     * @var \PDOStatement|null
+     * @var null|\PDOStatement
      */
     private static ?\PDOStatement $sql = null;
 
     /**
-     * Stores current key that represents the current query ID
+     * Stores current key that represents the current query ID.
      *
-     * @var string|int|null
+     * @var null|int|string
      */
-    private static string|int|null $current_key = null;
+    private static null|int|string $current_key = null;
 
     /**
-     * Holds bindings for the current query
+     * Holds bindings for the current query.
      *
-     * @var array|null
+     * @var null|array
      */
     private static ?array $current_bindings = null;
 
     /**
-     * Flag indicating a concurrency lock (not necessarily, but mostly deadlocks)
+     * Flag indicating a concurrency lock (not necessarily, but mostly deadlocks).
      *
      * @var bool
      */
     private static bool $deadlock = false;
 
     /**
-     * Flag indicating that we have a single `SELECT` query
+     * Flag indicating that we have a single `SELECT` query.
      *
      * @var bool
      */
     private static bool $single_select = false;
 
     /**
-     * @param \PDO|null $dbh          PDO object to use for database connection. If not provided, the class expects the existence of `\Simbiat\Database\Pool` to use that instead.
-     * @param int|null  $max_run_time Maximum time (in seconds) for the query (for `set_time_limit`)
-     * @param int|null  $max_tries    Number of times to retry in case of deadlock
-     * @param int|null  $sleep        Time (in seconds) to wait between retries in case of deadlock
+     * @param null|\PDO $dbh          PDO object to use for database connection. If not provided, the class expects the existence of `\Simbiat\Database\Pool` to use that instead.
+     * @param null|int  $max_run_time Maximum time (in seconds) for the query (for `set_time_limit`)
+     * @param null|int  $max_tries    Number of times to retry in case of deadlock
+     * @param null|int  $sleep        Time (in seconds) to wait between retries in case of deadlock
      * @param bool      $transaction  Flag whether to use `TRANSACTION` mode. `true` by default.
      * @param bool      $debug        Debug mode
      */
@@ -158,18 +158,18 @@ final class Query
     }
 
     /**
-     * Run SQL query
+     * Run SQL query.
      *
-     * @param string|array                    $queries          Query/queries to run.
+     * @param array|string                    $queries          Query/queries to run.
      * @param array                           $bindings         Global bindings that need to be applied to all queries.
      * @param int                             $fetch_mode       `FETCH` mode used by `SELECT` queries.
-     * @param int|string|object|callable|null $fetch_argument   Optional argument for various `FETCH` modes.
+     * @param null|callable|int|object|string $fetch_argument   Optional argument for various `FETCH` modes.
      * @param array                           $constructor_args `ConstructorArgs` for `fetchAll` PDO function. Used only for `\PDO::FETCH_CLASS` mode.
      * @param string                          $return           Hint to change the type of return on success. The default is `bool`, refer documentation for other values.
      *
      * @return mixed
      */
-    public static function query(string|array $queries, array $bindings = [], int $fetch_mode = \PDO::FETCH_ASSOC, int|string|object|null|callable $fetch_argument = null, array $constructor_args = [], #[ExpectedValues(self::FLAVORS)] string $return = 'bool'): mixed
+    public static function query(array|string $queries, array $bindings = [], int $fetch_mode = \PDO::FETCH_ASSOC, null|callable|int|object|string $fetch_argument = null, array $constructor_args = [], #[ExpectedValues(self::FLAVORS)] string $return = 'bool'): mixed
     {
         if (!\in_array($return, self::FLAVORS, true)) {
             throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but it is not supported.');
@@ -195,6 +195,7 @@ final class Query
         $try = 0;
         do {
             ++$try;
+
             try {
                 self::execute($queries, $fetch_mode, $fetch_argument, $constructor_args);
             } catch (\Throwable $exception) {
@@ -215,7 +216,7 @@ final class Query
             if ($return === 'affected') {
                 return self::$last_affected;
             }
-            if (\in_array($return, ['all', 'column', 'pair', 'unique'])) {
+            if (\in_array($return, ['all', 'column', 'pair', 'unique'], true)) {
                 return self::$last_result;
             }
             if ($return === 'row') {
@@ -238,7 +239,7 @@ final class Query
     }
 
     /**
-     * Helper function to check if a query is a select(able) one
+     * Helper function to check if a query is a select(able) one.
      *
      * @param string $query Query to check
      * @param bool   $throw Throw exception if not `SELECT` and this option is `true`.
@@ -264,7 +265,7 @@ final class Query
     }
 
     /**
-     * Checks if a query is an INSERT
+     * Checks if a query is an INSERT.
      *
      * @param string $query
      * @param bool   $throw
@@ -308,15 +309,15 @@ final class Query
     }
 
     /**
-     * Helper to do some preparations of the queries and bindings
+     * Helper to do some preparations of the queries and bindings.
      *
-     * @param string|array $queries
+     * @param array|string $queries
      * @param array        $bindings
      * @param string       $return
      *
      * @return void
      */
-    private static function preprocess(string|array &$queries, array $bindings, string $return): void
+    private static function preprocess(array|string &$queries, array $bindings, string $return): void
     {
         // Check if a query string was sent
         if (\is_string($queries)) {
@@ -374,7 +375,7 @@ final class Query
     }
 
     /**
-     * Helper to validate return flavor is supported by the current query or list of queries
+     * Helper to validate return flavor is supported by the current query or list of queries.
      *
      * @param array  $queries
      * @param string $return
@@ -396,7 +397,7 @@ final class Query
                     $queries[0][0] = \preg_replace(['/(;?\s*\z)/mui', '/\z/mui'], ['', ' LIMIT 0, 1;'], $queries[0][0]);
                 }
             } else {
-                if (!\in_array($return, ['increment', 'bool', 'affected'])) {
+                if (!\in_array($return, ['increment', 'bool', 'affected'], true)) {
                     throw new \UnexpectedValueException('Return flavor `'.$return.'` provided to `query()` function but the query is not a `SELECT`.');
                 }
                 if (
@@ -415,7 +416,7 @@ final class Query
     }
 
     /**
-     * Helper to handle exceptions
+     * Helper to handle exceptions.
      *
      * @param array      $queries
      * @param string     $error_message
@@ -436,8 +437,8 @@ final class Query
         }
         // Check if it's a deadlock. Unbuffered queries are not deadlock, but practice showed that in some cases this error is thrown when there is a lock on resources, and not really an issue with (un)buffered queries. Retrying may help in those cases.
         if (
-            self::$sql !== null && (self::$sql->errorCode() === '40001' ||
-                \preg_match(
+            self::$sql !== null && (self::$sql->errorCode() === '40001'
+                || \preg_match(
                     '/(deadlock|The database file is locked|database is locked|database table is locked|Lock wait timeout exceeded|try restarting transaction|Cannot execute queries while other unbuffered queries are active|Record has changed since last read in table)/mi',
                     $error_message,
                 ) === 1)
@@ -478,16 +479,16 @@ final class Query
     }
 
     /**
-     * Helper that actually executed the queries
+     * Helper that actually executed the queries.
      *
      * @param array                           $queries
      * @param int                             $fetch_mode
-     * @param int|string|object|callable|null $fetch_argument
+     * @param null|callable|int|object|string $fetch_argument
      * @param array                           $constructor_arguments
      *
      * @return void
      */
-    private static function execute(array &$queries, int $fetch_mode = \PDO::FETCH_ASSOC, int|string|object|null|callable $fetch_argument = null, array $constructor_arguments = []): void
+    private static function execute(array &$queries, int $fetch_mode = \PDO::FETCH_ASSOC, null|callable|int|object|string $fetch_argument = null, array $constructor_arguments = []): void
     {
         // Initiate transaction if we are using it
         if (
@@ -547,7 +548,7 @@ final class Query
                 \ob_flush();
                 \flush();
             }
-            /** @noinspection DisconnectedForeachInstructionInspection */
+            /* @noinspection DisconnectedForeachInstructionInspection */
             if (self::$single_select) {
                 // Adjust fetching mode
                 if (\in_array($fetch_mode, [\PDO::FETCH_COLUMN, \PDO::FETCH_FUNC, \PDO::FETCH_INTO, \PDO::FETCH_FUNC, \PDO::FETCH_SERIALIZE], true)) {
@@ -568,6 +569,7 @@ final class Query
                 unset($queries[$key]);
             }
         }
+
         // Try to get the last ID (if we had any inserts with auto increment
         try {
             self::$last_id = self::$dbh->lastInsertId();
